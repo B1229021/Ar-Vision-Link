@@ -48,19 +48,27 @@
 ## 專案結構 (Project Structure)
 
 ```text
-webar/
-├── index.html                 
-│
-├── webar-frontend/            # 前端與 AI 運算層
-│   ├── camera.html            # AR 體驗與辨識主頁
-│   ├── register.html          # 使用者註冊與臉部建檔頁面
-│   ├── script.js              # Vision 核心主控邏輯 (雙引擎協作)
-│   ├── register.js            # 註冊邏輯與特徵提取 (Embedding)
-│   ├── camera_utils.js        # WebRTC 鏡頭與 Frame Loop 控制
-│   ├── drawing_utils.js       # MediaPipe Canvas 繪製工具
-│   ├── style.css              # 全域樣式與 AR 疊加層動畫
-│   └── *.wasm                 # TensorFlow.js WASM 加速檔
-│
-└── webar-backend/             # 待命中的自建 API 服務
-    ├── app.py                 # FastAPI 主程式與路由
-    └── requirements.txt       # Python 環境依賴清單
+AR-VISION-LINK/                
+├── README.md                
+├── Ignore                     
+└── webar-main/                # Vision 模組主程式 (AR 辨識系統)
+    ├── index.html             # 專案入口大廳
+    ├── README.md              # Vision 模組開發文件
+    │
+    ├── webar-frontend/        # 前端與 AI 運算層
+    │   ├── camera.html        # AR 體驗與辨識主頁
+    │   ├── register.html      # 使用者註冊頁面
+    │   ├── script.js          # Vision 核心主控邏輯 (雙引擎協作)
+    │   ├── register.js        # 註冊邏輯與特徵提取
+    │   ├── camera_utils.js    # 鏡頭與 Frame Loop 控制
+    │   ├── drawing_utils.js   # MediaPipe 繪圖工具
+    │   ├── face_mesh.js       # MediaPipe 核心庫
+    │   ├── face-api.min.js    # 人臉辨識引擎
+    │   ├── style.css          # 全域樣式與 AR 動畫
+    │   ├── chest.png          
+    │   └── tfjs-backend-wasm* # TensorFlow.js WASM 加速檔案 (多執行緒/SIMD)
+    │
+    └── webar-backend/         # 自建 API 服務 (開發中)
+        ├── app.py             # FastAPI 主程式
+        ├── requirements.txt   # Python 依賴清單
+        └── 目前沒用到後端     

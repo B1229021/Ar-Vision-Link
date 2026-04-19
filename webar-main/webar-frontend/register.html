@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>註冊帳戶</title>
+
+  <!-- face-api.js：臉部 embedding 使用 -->
+  <script
+    defer
+    src="face-api.min.js">
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #4f46e5 0, #020617 55%, #000 100%);
+      font-family: "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #e5e7eb;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 430px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      padding: 22px;
+      border-radius: 18px;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.6);
+      backdrop-filter: blur(12px);
+    }
+
+    h2 {
+      margin: 5px 0 4px;
+      text-align: center;
+      font-size: 22px;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 13px;
+      color: #9ca3af;
+      margin-bottom: 16px;
+    }
+
+    /* STEP 標示 */
+    .step-indicator {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 16px;
+      gap: 6px;
+    }
+    .step-indicator span {
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid #4b5563;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    .step-active {
+      border-color: #6366f1 !important;
+      background: rgba(99,102,241,0.2);
+      color: #fff;
+    }
+
+    /* 表單欄位 */
+    .field {
+      margin-bottom: 14px;
+    }
+    label {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 4px;
+      display: block;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 10px;
+      border: 1px solid #4b5563;
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .2s;
+      box-sizing: border-box;
+    }
+    input:focus, textarea:focus {
+      border-color: #6366f1;
+    }
+    textarea {
+      min-height: 70px;
+      resize: vertical;
+    }
+
+    /* 按鈕 */
+    .btn {
+      width: 100%;
+      padding: 11px;
+      border-radius: 999px;
+      border: none;
+      font-size: 15px;
+      font-weight: 600;
+      margin-top: 10px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+    }
+    .btn-primary:hover {
+      filter: brightness(1.06);
+    }
+    .btn-secondary {
+      background: rgba(55, 65, 81, 0.95);
+      border: 1px solid #4b5563;
+      color: #e5e7eb;
+    }
+    .btn-secondary:hover {
+      background: rgba(75, 85, 99, 0.95);
+    }
+
+    /* STEP 2：拍照區 */
+    #step2 {
+      display: none;
+    }
+
+    .preview-box {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      border-radius: 14px;
+      border: 1px solid #4b5563;
+      overflow: hidden;
+      background: #111827;
+      margin-bottom: 12px;
+    }
+    #placeholder, #regVideo, #previewCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #regVideo { display: none; }
+    #previewCanvas { display: none; }
+    #placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
+    .small-hint {
+      text-align: center;
+      font-size: 12px;
+      margin-bottom: 8px;
+      color: #9ca3af;
+    }
+
+    #uploadPhoto { display: none; }
+
+    .uploadLabel {
+      width: 100%;
+      text-align: center;
+      padding: 10px;
+      border: 1px dashed #6b7280;
+      border-radius: 999px;
+      margin-top: 6px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #e5e7eb;
+      background: rgba(31,41,55,0.9);
+    }
+    .uploadLabel:hover {
+      background: rgba(55,65,81,0.95);
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      left: 50%;
+      bottom: 26px;
+      transform: translateX(-50%);
+      padding: 8px 16px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      border-radius: 10px;
+      font-size: 13px;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="card">
+
+    <h2>建立新帳戶</h2>
+    <div class="subtitle">請先填寫基本資料，再進行臉部註冊。</div>
+
+    <!-- STEP 標示 -->
+    <div class="step-indicator">
+      <span id="stepLabel1" class="step-active">STEP 1：填寫資料</span>
+      <span id="stepLabel2">STEP 2：拍攝照片</span>
+    </div>
+
+    <!-- STEP 1：填資料 -->
+    <div id="step1">
+      <div class="field">
+        <label>姓名（必填）</label>
+        <input id="nameInput" type="text" placeholder="例如：陳小明" />
+      </div>
+
+      <div class="field">
+        <label>暱稱（可選）</label>
+        <input id="nicknameInput" type="text" placeholder="Simon" />
+      </div>
+
+      <div class="field">
+        <label>自我介紹（可選）</label>
+        <textarea id="descriptionInput" placeholder="簡短介紹自己"></textarea>
+      </div>
+
+      <div class="field">
+        <label>額外資訊（可選）</label>
+        <textarea id="extraInfoInput" placeholder="例如：IG / 備註"></textarea>
+      </div>
+
+      <button id="goStep2" class="btn btn-primary">下一步：拍攝照片 ➜</button>
+    </div>
+
+    <!-- STEP 2：拍照 / 上傳 -->
+    <div id="step2">
+      <div class="preview-box">
+        <div id="placeholder">尚未拍照或上傳</div>
+        <video id="regVideo" playsinline autoplay></video>
+        <canvas id="previewCanvas"></canvas>
+      </div>
+
+      <div class="small-hint">
+        可拍照或上傳一張臉部清楚的照片
+      </div>
+
+      <button id="takePhotoBtn" class="btn btn-secondary">📷 拍一張照片</button>
+
+      <label for="uploadPhoto" class="uploadLabel">📁 選擇照片上傳</label>
+      <input id="uploadPhoto" type="file" accept="image/*">
+
+      <button id="registerBtn" class="btn btn-primary">完成註冊</button>
+
+      <button id="backStep1" class="btn btn-secondary">返回上一步</button>
+    </div>
+
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- 邏輯 -->
+  <script type="module" src="register.js"></script>
+</body>
+</html>

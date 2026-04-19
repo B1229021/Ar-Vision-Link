@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebAR + Face Recognition</title>
+
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- MediaPipe FaceMesh：一定要在 script.js 之前 -->
+  <script src="face_mesh.js"></script>
+  <script src="drawing_utils.js"></script>
+  <script src="camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm"></script>
+
+  <!-- face-api.js（UMD，全域變數 window.faceapi） -->
+  <script defer src="face-api.min.js"></script>
+</head>
+
+<body>
+  <!-- ✅ 外層容器：讓 video / canvas / 名牌 疊在一起 -->
+  <div id="cameraWrapper">
+    <!-- 相機畫面 -->
+    <video id="videoElement" autoplay playsinline></video>
+
+    <!-- landmark canvas -->
+    <canvas id="landmarksCanvas"></canvas>
+
+    <!-- ✅ 多人名牌圖層（每個人一個 .user-tag） -->
+    <div id="tagLayer"></div>
+  </div>
+
+  <!-- 使用者資料卡（之後可以做到點名牌再顯示詳細資料） -->
+  <div id="userCard">
+    <img id="avatar" alt="Avatar" />
+    <h2 id="name"></h2>
+    <p id="nickname"></p>
+    <p id="description"></p>
+    <p id="extraInfo"></p>
+  </div>
+
+  <!-- 主頁邏輯：ES Module -->
+  <script type="module" src="./script.js"></script>
+</body>
+</html>

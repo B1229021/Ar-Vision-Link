@@ -1,0 +1,91 @@
+/* 讓整個相機區域全螢幕 & 疊圖層 */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 外層包 video / canvas / tagLayer */
+#cameraWrapper {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 讓 video / canvas 填滿畫面 */
+#videoElement,
+#landmarksCanvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 多人名牌所在的圖層 */
+#tagLayer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* 不擋住點擊 */
+}
+
+/* 每一個人的名牌 */
+.user-tag {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  color: #fff;
+  font-size: 12px;
+  border: none !important;
+  white-space: nowrap;
+  box-shadow: none !important;
+}
+.user-tag .name {
+  font-weight: bold;
+}
+.user-tag .nickname {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* 你原本的 userCard 想固定在右下角之類可以像這樣 */
+#userCard {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 220px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(6px);
+  display: none; /* 先隱藏，需要時再用 JS 顯示 */
+}
+#userCard img#avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto 8px;
+}
+#userCard h2 {
+  font-size: 16px;
+  margin: 0 0 4px;
+  text-align: center;
+}
+#userCard p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}

@@ -294,12 +294,12 @@ ar-vision-link/
 │   
 ├── .gitignore
 ├── eslint.config.js
-├── index.htmlo
+├── index.html
 ├── package.json
 ├── package-lock.json
-├── README.MD
+├── README.md
 ├── readme.txt
-└── vit.config.js
+└── vite.config.js
 ```
 
 ---
@@ -380,9 +380,10 @@ npm run build
 ---
 
 # 👨‍💻 開發團隊
-
+```
 長庚大學 資訊工程學系 三年級
    B1229049 陳泓均
    B1229006 陳語嫻
    B1229021 黃星昊
    B1229031 黃柏叡
+```

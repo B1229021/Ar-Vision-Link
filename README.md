@@ -154,58 +154,77 @@ AR 顯示結果
 
 # 🗄 資料庫設計
 
+## users
+
+```sql
+id INT8 PRIMARY KEY
+name VARCHAR
+nickname VARCHAR
+description TEXT
+extra_info TEXT
+is_active BOOLEAN
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
+face_embedding FLOAT8[]
+avatar_url TEXT
+```
+
 ## quizzes
 
 ```sql
-id UUID PRIMARY KEY
-title TEXT
-created_at TIMESTAMP
+quiz_id INT8 PRIMARY KEY
+host_id INT8 REFERENCES users(id)
+title VARCHAR
+created_at TIMESTAMPTZ
 ```
 
 ## questions
 
 ```sql
-id UUID PRIMARY KEY
-quiz_id UUID
+question_id INT8 PRIMARY KEY
+quiz_id INT8 REFERENCES quizzes(quiz_id)
 question_text TEXT
-option_a TEXT
-option_b TEXT
-option_c TEXT
-option_d TEXT
-correct_answer TEXT
-time_limit INTEGER
+options JSONB
+correct_answer VARCHAR
+time_limit INT4
+created_at TIMESTAMPTZ
 ```
 
 ## game_rooms
 
 ```sql
-id UUID PRIMARY KEY
-quiz_id UUID
-status TEXT
-current_question INTEGER
-created_at TIMESTAMP
+session_id INT8 PRIMARY KEY
+quiz_id INT8 REFERENCES quizzes(quiz_id)
+room_code VARCHAR
+started_at TIMESTAMPTZ
+ended_at TIMESTAMPTZ
+current_question INT4
+game_finished BOOLEAN
 ```
 
-## players
+## player_records
 
 ```sql
-id UUID PRIMARY KEY
-room_id UUID
-nickname TEXT
-score INTEGER
-joined_at TIMESTAMP
+record_id INT8 PRIMARY KEY
+session_id INT8 REFERENCES game_sessions(session_id)
+user_id INT8 REFERENCES users(id)
+score INT4
+correct_count INT4
+rank INT4
+joined_at TIMESTAMPTZ
 ```
 
 ## player_answers
 
 ```sql
-id UUID PRIMARY KEY
-player_id UUID
-question_id UUID
-answer TEXT
+answer_id INT8 PRIMARY KEY
+session_id INT8 REFERENCES game_sessions(session_id)
+question_id INT8 REFERENCES questions(question_id)
+user_id INT8 REFERENCES users(id)
+answer VARCHAR
 is_correct BOOLEAN
-score_earned INTEGER
-answered_at TIMESTAMP
+score INT4
+answered_at TIMESTAMPTZ
 ```
 
 ---
@@ -286,6 +305,14 @@ ar-vision-link/
 ---
 
 # 🚀 快速開始
+
+## 可以直接在 Github Pages 用瀏覽器運行
+
+```
+https://b1229049.github.io/ar-vision-link/
+```
+
+# 在本地開啟網頁
 
 ## Clone Repository
 

@@ -1,88 +1,361 @@
-# AR Vision Link 
-**webar網頁版臉部辨識 + 多人線上即時制答題系統**
+# AR Vision Link
 
-![WebAR](https://img.shields.io/badge/WebAR-MediaPipe-blue)
-![FaceAPI](https://img.shields.io/badge/AI-face--api.js-orange)
-![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688)
-![WebSocket](https://img.shields.io/badge/RealTime-WebSocket-red)
-![Status](https://img.shields.io/badge/Status-Active_Development-success)
+<div align="center">
 
-## 專題簡介 (Project Overview)
-**AR Vision Link** 是一個結合邊緣AI視覺運算與即時多人連線技術的雙模組 Web 應用系統。本專案將擴增實境 (AR)、邊緣 AI 視覺運算與即時多人連線技術結合，創造出「刷臉&答題同樂」的沉浸式互動體驗平台。
+# 🎮 AR Vision Link
+### Interactive AR Quiz Platform
 
-專題由兩大核心模組組成：
-1. **Vision 模組 (已實裝)**：基於瀏覽器端的高效能 AR 臉部追蹤與身分辨識系統。
-2. **Link 模組 (開發中)**：基於 WebSocket 的高併發即時多人答題與房間管理系統。
+即時多人互動測驗平台 × AR 即時資訊顯示 × 智慧教室應用
 
----
+![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase)
+![Render](https://img.shields.io/badge/Render-Backend-46E3B7)
+![Realtime](https://img.shields.io/badge/Realtime-Supported-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-## 專題架構 (System Architecture)
-
-本系統採用「重前端 (Heavy-Client)、微服務 (Microservices) 擴充」的架構設計，確保 AI 運算效能與連線的穩定性。
-
-* **前端運算層 (Edge Computing)**：
-    * 利用 WebAssembly (WASM) 將繁重的機器視覺任務（臉部 3D 網格建立、128 維特徵矩陣提取）完全卸載至客戶端瀏覽器執行，達成零延遲的 AR 追蹤體驗。
-* **雲端/資料層 (Data Persistence)**：
-    * 目前使用 **Supabase (BaaS)** 進行快速的特徵向量 (Face Embeddings) 讀寫與快取。
-    * 並行開發 **FastAPI + MySQL** 自建後端，為未來的複雜關聯資料（如題庫、歷史作答紀錄）做準備。
-* **即時通訊層 (Real-time Sync)**：
-    * Link 模組將透過獨立的 **WebSocket 伺服器** 負責全雙工通訊，處理房間建立、題目廣播、以及各客戶端的作答狀態同步。
+</div>
 
 ---
 
-## 核心模組功能 (Core Features)
+# 📖 專案簡介
 
-### Vision 模組：零延遲 WebAR 追蹤
-* **邊緣 AI 運算**：使用 `MediaPipe FaceMesh` 實現高頻率 468 點 3D 臉部空間網格追蹤。
-* **本地端特徵辨識**：整合 `face-api.js`，於客戶端即時計算特徵矩陣並進行歐幾里得距離比對，辨識使用者身分。
+AR Vision Link 是一套結合 **即時多人測驗（Real-Time Quiz）** 與 **AR 即時資訊顯示（Augmented Reality Visualization）** 的智慧互動學習平台。
 
-### Link 模組：多人即時答題系統 (WIP)
-* **無縫入房 (Face-Login Integration)**：整合 Vision 模組，學生透過 AR 鏡頭辨識身分後，系統自動讀取資料並將其加入對應的測驗房間。
-* **狀態機房間管理**：伺服器精準控管房間的生命週期，包含 LOBBY（等待大廳）、QUESTION_ACTIVE（作答倒數）、RESULT（單題結算）等狀態。
-* **即時作答同步**：支援高併發連線，當老師派發題目時，所有連線客戶端毫秒級同步顯示題目；學生作答後，系統即時更新排行榜與正確率。
+本系統以提升課堂互動性與學習參與度為目標，教師可透過主持人控制台建立測驗並管理遊戲流程，而學生則可透過手機或電腦即時加入房間進行答題。
+
+除了傳統線上測驗功能外，AR Vision Link 更導入 AR 即時資訊顯示技術，將玩家分數、答題結果、排名與成就資訊直接呈現在玩家頭頂，大幅提升互動感與競爭體驗，打造新一代智慧教室環境。
 
 ---
 
-## 技術堆疊 (Tech Stack)
+# ✨ 系統特色
 
-### 前端與 AI 視覺層 (Frontend & Edge AI)
-* **Core**: HTML5, CSS3, Vanilla JavaScript (ES6 Modules)
-* **Computer Vision**: [MediaPipe FaceMesh](https://google.github.io/mediapipe/solutions/face_mesh)
-* **Face Recognition**: [face-api.js](https://github.com/vladmandic/face-api) (TensorFlow.js w/ WASM backend)
+## 🎮 即時多人測驗
+- 建立與管理測驗
+- 多人即時加入房間
+- 即時作答同步
+- 倒數計時機制
+- 自動計分系統
+- 即時排行榜更新
 
-### 資料庫與後端 API (Database & REST API)
-* **Cloud Database (Current)**: [Supabase](https://supabase.com/) (BaaS)
-* **Custom Backend (Standby)**: Python FastAPI, SQLAlchemy, MySQL (`pymysql`)
+## 🥽 AR 即時資訊顯示
+- 玩家頭頂顯示即時分數
+- 玩家頭頂顯示答題結果
+- 玩家頭頂顯示排名資訊
+- 玩家頭頂顯示連勝紀錄
+- 玩家頭頂顯示特殊成就
 
-### 即時通訊層 (Real-time Communication)
-* **Protocol**: WebSocket (預計導入 Socket.io)
+## 🎛 主持人控制台
+- 控制題目切換
+- 查看玩家作答狀況
+- 即時監控排行榜
+- 查看答題統計
+- 控制遊戲開始與結束
+
+## 📊 學習分析
+- 題目正確率分析
+- 玩家表現分析
+- 班級統計資料
+- 排名變化趨勢
+- 測驗歷史紀錄
 
 ---
 
-## 專案結構 (Project Structure)
+# 🏗 系統架構
 
 ```text
-AR-VISION-LINK/                
-├── README.md                  
-├── Ignore                     
-└── webar-main/                # Vision 模組主程式 (AR 辨識系統)
-    ├── index.html             # 專案入口大廳
-    ├── README.md              # Vision 模組開發文件
-    │
-    ├── webar-frontend/        # 前端與 AI 運算層
-    │   ├── camera.html        # AR 體驗與辨識主頁
-    │   ├── register.html      # 使用者註冊與臉部建檔頁面
-    │   ├── script.js          # Vision 核心主控邏輯 
-    │   ├── register.js        # 註冊邏輯 & 臉部特徵提取 
-    │   ├── camera_utils.js    # WebRTC 鏡頭與 Frame Loop 控制
-    │   ├── drawing_utils.js   # MediaPipe Canvas 繪製工具
-    │   ├── face_mesh.js       # MediaPipe 核心庫
-    │   ├── face-api.min.js    # 人臉辨識引擎
-    │   ├── style.css          # 全域樣式 & AR疊加層動畫
-    │   ├── chest.png          
-    │   └── tfjs-backend-wasm* # TensorFlow.js WASM 加速檔案
-    │
-    └── webar-backend/         # 自建 API 服務 (準備階段)
-        ├── app.py             # FastAPI 主程式與路由
-        ├── requirements.txt   
-        └── 目前沒用到後端     
+Teacher
+   │
+   ▼
+Host Console
+   │
+   ▼
+Supabase Realtime
+   │
+ ┌─┴─────────────┐
+ ▼               ▼
+Players      AR Overlay
+```
+
+---
+
+# ⚙️ 技術架構
+
+## Frontend
+- React
+- React Router
+- JavaScript ES6+
+- HTML5
+- CSS3
+
+## Backend
+- Node.js
+- Express.js
+
+## Database
+- Supabase
+- PostgreSQL
+
+## Realtime
+- Supabase Realtime
+
+## AR Module
+- MediaPipe
+- Face Tracking
+- Landmark Detection
+- Real-Time Overlay
+
+---
+
+# 🎯 遊戲流程
+
+```text
+建立測驗
+↓
+建立房間
+↓
+玩家加入
+↓
+開始遊戲
+↓
+顯示題目
+↓
+玩家作答
+↓
+即時計分
+↓
+AR 顯示結果
+↓
+排行榜更新
+↓
+公布結果
+```
+
+---
+
+# 🏆 計分機制
+
+總分 = 基本分數 + 時間加成
+
+```text
+基本分數 = 1000
+時間加成 = 剩餘秒數 × 10
+```
+
+範例：
+
+```text
+剩餘時間：15 秒
+
+1000 + (15 × 10)
+= 1150 分
+```
+
+---
+
+# 🗄 資料庫設計
+
+## quizzes
+
+```sql
+id UUID PRIMARY KEY
+title TEXT
+created_at TIMESTAMP
+```
+
+## questions
+
+```sql
+id UUID PRIMARY KEY
+quiz_id UUID
+question_text TEXT
+option_a TEXT
+option_b TEXT
+option_c TEXT
+option_d TEXT
+correct_answer TEXT
+time_limit INTEGER
+```
+
+## game_rooms
+
+```sql
+id UUID PRIMARY KEY
+quiz_id UUID
+status TEXT
+current_question INTEGER
+created_at TIMESTAMP
+```
+
+## players
+
+```sql
+id UUID PRIMARY KEY
+room_id UUID
+nickname TEXT
+score INTEGER
+joined_at TIMESTAMP
+```
+
+## player_answers
+
+```sql
+id UUID PRIMARY KEY
+player_id UUID
+question_id UUID
+answer TEXT
+is_correct BOOLEAN
+score_earned INTEGER
+answered_at TIMESTAMP
+```
+
+---
+
+# 📂 專案結構
+
+```text
+ar-vision-link/
+├── backend/
+│   ├── .gitignore
+│   ├── package
+│   └── server.js
+│
+├── public/
+│   ├── chest.png
+│   ├── favicon.svg
+│   ├── icon.svg
+│   ├── tfjs-backend-wasm.wasm
+│   ├── tfjs-backend-wasm-simd.wasm
+│   └── tfjs-backend-wasm-threaded-simd.wasm
+│   
+├── src/
+│   ├── pages/
+│   │   ├── Camera.jsx
+│   │   ├── CreateQuiz.jsx
+│   │   ├── EditProfile.jsx
+│   │   ├── FaceLogin.jsx
+│   │   ├── Home.jsx
+│   │   ├── HostConsole.jsx
+│   │   ├── HostLobby.jsx
+│   │   ├── JoinQuiz.jsx
+│   │   ├── Leaderboard.jsx
+│   │   ├── ManageQuizzes.jsx
+│   │   ├── Profile.jsx
+│   │   ├── QuizGame.jsx
+│   │   ├── QuizHome.jsx
+│   │   ├── Register.jsx
+│   │   ├── ReRwgisterFace.jsx
+│   │   └── WaitingLobby.jsx
+│   │
+│   ├── components/
+│   │   ├── Navbar.jsx
+│   │   └── ProtectRoute.jsx
+│   │
+│   ├── styles/
+│   │   ├── Camera.css
+│   │   ├── CreateQuiz.css
+│   │   ├── EditProfile.css
+│   │   ├── FaceLogin.css
+│   │   ├── Home.css
+│   │   ├── HostConsole.css
+│   │   ├── HostLobby.css
+│   │   ├── JoinQuiz.css
+│   │   ├── Leaderboard.css
+│   │   ├── ManageQuizzes.css
+│   │   ├── Profile.css
+│   │   ├── QuizGame.css
+│   │   ├── QuizHome.css
+│   │   ├── Register.css
+│   │   ├── ReRwgisterFace.css
+│   │   └── WaitingLobby.css
+│   │
+│   ├── App.css
+│   ├── App.jsx
+│   ├── index.css
+│   └── main.jsx
+│   
+├── .gitignore
+├── eslint.config.js
+├── index.htmlo
+├── package.json
+├── package-lock.json
+├── README.MD
+├── readme.txt
+└── vit.config.js
+```
+
+---
+
+# 🚀 快速開始
+
+## Clone Repository
+
+```bash
+git clone https://github.com/B1229049/ar-vision-link.git
+```
+
+## 安裝套件
+
+```bash
+npm install
+```
+
+## 啟動開發環境
+
+```bash
+npm run dev
+```
+
+## 建置正式版本
+
+```bash
+npm run build
+```
+
+---
+
+# 🌐 部署方式
+
+## Frontend
+- GitHub Pages
+- Vercel
+- Netlify
+
+## Backend
+- Render
+- Railway
+- Fly.io
+
+## Database
+- Supabase PostgreSQL
+
+---
+
+# 🔮 未來發展
+
+## AI 功能
+- AI 自動產題
+- AI 題目推薦
+- AI 學習分析
+- AI 個人化學習路徑
+
+## AR 功能
+- AR 排名顯示
+- AR 成就系統
+- AR 小組競賽
+- AR 任務模式
+
+## 教學功能
+- 班級管理
+- 課程管理
+- 成績分析
+- 學習歷程紀錄
+
+---
+
+# 👨‍💻 開發團隊
+
+長庚大學 資訊工程學系 三年級
+   B1229049 陳泓均
+   B1229006 陳語嫻
+   B1229021 黃星昊
+   B1229031 黃柏叡

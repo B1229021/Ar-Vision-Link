@@ -1,5 +1,3 @@
-# AR Vision Link
-
 <div align="center">
 
 # 🎮 AR Vision Link
@@ -7,9 +5,29 @@
 
 即時多人互動測驗平台 × AR 即時資訊顯示 × 智慧教室應用
 
-![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react)
-![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase)
+**Frontend & Build**
+<br>
+![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![React Router](https://img.shields.io/badge/React_Router-CA4245?logo=react-router&logoColor=white)
+![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-222222?logo=github&logoColor=white)
+
+**AI & Real-Time (Core)**
+<br>
+![TensorFlow.js](https://img.shields.io/badge/TensorFlow.js-FF6F00?logo=tensorflow&logoColor=white)
+![MediaPipe](https://img.shields.io/badge/MediaPipe-FaceMesh-00A67E)
+![WebRTC](https://img.shields.io/badge/WebRTC-333333?logo=webrtc&logoColor=white)
+![Socket.io](https://img.shields.io/badge/Socket.io-010101?logo=socket.io&logoColor=white)
+
+**Backend & Database**
+<br>
+![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
+![Express.js](https://img.shields.io/badge/Express.js-000000?logo=express&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase&logoColor=black)
 ![Render](https://img.shields.io/badge/Render-Backend-46E3B7)
+
+**Status & License**
+<br>
 ![Realtime](https://img.shields.io/badge/Realtime-Supported-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 

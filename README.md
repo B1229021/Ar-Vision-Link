@@ -1,5 +1,3 @@
-<img width="128" height="128" alt="image" src="https://github.com/user-attachments/assets/4cb4c60b-f41d-41ef-8cd6-12f54c6bd080" /><div align="center">
-
 # AR Vision Link
 ### Interactive AR Quiz Platform
 

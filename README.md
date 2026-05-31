@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎮 AR Vision Link
+# AR Vision Link
 ### Interactive AR Quiz Platform
 
 即時多人互動測驗平台 × AR 即時資訊顯示 × 智慧教室應用
@@ -35,7 +35,7 @@
 
 ---
 
-# 📖 專案簡介
+# 專案簡介
 
 AR Vision Link 是一套結合 擴增實境（AR）、WebRTC 即時視訊串流、多人線上測驗系統 與 人臉辨識技術 的互動式學習平台。
 
@@ -45,7 +45,7 @@ AR Vision Link 是一套結合 擴增實境（AR）、WebRTC 即時視訊串流�
 
 ---
 
-# ✨ 系統特色
+# 系統特色
 
 ## 🎮 即時多人測驗
 - 建立與管理測驗
@@ -78,28 +78,24 @@ AR Vision Link 是一套結合 擴增實境（AR）、WebRTC 即時視訊串流�
 
 ---
 
-# 🏗 系統架構
+# 系統架構
 
 ```text
-           React Frontend 
-            GitHub Pages
-                 │
-                 ▼
-          Socket.IO Server
-         Render Web Service
-                 │
-                 ▼
-         Supabase Realtime
-                 │
-   ┌─────────────┼──────────────┐
-   ▼             ▼              ▼
-Supabase    ExpressTURN       WebRTC
-Database    TURN Server    Video Stream
+           React Frontend
+                          (GitHub Pages)
+                                │
+     ┌──────────────────────────┼──────────────────────────┐
+     ▼                          ▼                          ▼
+ Socket.IO Server          ExpressTURN                  WebRTC
+(Render Web Service)      (TURN Server)           (P2P Video Stream)
+     │
+     ▼
+ Supabase Database
 ```
 
 ---
 
-# ⚙️ 技術架構
+# 技術架構
 
 ## Frontend
 - React
@@ -121,7 +117,7 @@ Database    TURN Server    Video Stream
 
 ---
 
-# 🎯 遊戲流程
+# 遊戲流程
 
 ```text
 建立測驗
@@ -147,7 +143,7 @@ AR 顯示結果
 
 ---
 
-# 🏆 計分機制
+# 計分機制
 
 總分 = 基本分數 + 時間加成
 
@@ -167,7 +163,7 @@ AR 顯示結果
 
 ---
 
-# 🗄 資料庫設計
+# 資料庫設計
 
 ## users
 
@@ -319,7 +315,7 @@ ar-vision-link/
 
 ---
 
-# 🚀 快速開始
+# 快速開始
 
 ## 可以直接在 Github Pages 用瀏覽器運行
 
@@ -365,7 +361,7 @@ npm run dev
 
 ---
 
-# 🔮 未來發展
+# 未來發展
 
 ## AI 功能
 - AI 自動產題
@@ -387,7 +383,7 @@ npm run dev
 
 ---
 
-# 👨‍💻 開發團隊
+# 開發團隊
 ```
 長庚大學 資訊工程學系 三年級 Ar Vision Link Team
    B1229049 陳泓均

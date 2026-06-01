@@ -243,74 +243,86 @@ answered_at TIMESTAMPTZ
 # 📂 專案結構
 
 ```text
-ar-vision-link/
-├── backend/
+AR-VISION-LINK/
+├── ar-vision-link/
+│   ├── backend/
+│   │   ├── .gitignore
+│   │   ├── package
+│   │   └── server.js
+│   │
+│   ├── public/
+│   │   ├── chest.png
+│   │   ├── favicon.svg
+│   │   ├── icon.svg
+│   │   ├── tfjs-backend-wasm.wasm
+│   │   ├── tfjs-backend-wasm-simd.wasm
+│   │   └── tfjs-backend-wasm-threaded-simd.wasm
+│   │   
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Camera.jsx
+│   │   │   ├── CreateQuiz.jsx
+│   │   │   ├── EditProfile.jsx
+│   │   │   ├── FaceLogin.jsx
+│   │   │   ├── Home.jsx
+│   │   │   ├── HostConsole.jsx
+│   │   │   ├── HostLobby.jsx
+│   │   │   ├── JoinQuiz.jsx
+│   │   │   ├── Leaderboard.jsx
+│   │   │   ├── ManageQuizzes.jsx
+│   │   │   ├── Profile.jsx
+│   │   │   ├── QuizGame.jsx
+│   │   │   ├── QuizHome.jsx
+│   │   │   ├── Register.jsx
+│   │   │   ├── ReRwgisterFace.jsx
+│   │   │   └── WaitingLobby.jsx
+│   │   │
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx
+│   │   │   └── ProtectRoute.jsx
+│   │   │
+│   │   ├── styles/
+│   │   │   ├── Camera.css
+│   │   │   ├── CreateQuiz.css
+│   │   │   ├── EditProfile.css
+│   │   │   ├── FaceLogin.css
+│   │   │   ├── Home.css
+│   │   │   ├── HostConsole.css
+│   │   │   ├── HostLobby.css
+│   │   │   ├── JoinQuiz.css
+│   │   │   ├── Leaderboard.css
+│   │   │   ├── ManageQuizzes.css
+│   │   │   ├── Profile.css
+│   │   │   ├── QuizGame.css
+│   │   │   ├── QuizHome.css
+│   │   │   ├── Register.css
+│   │   │   ├── ReRwgisterFace.css
+│   │   │   └── WaitingLobby.css
+│   │   │
+│   │   ├── App.css
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   │   
 │   ├── .gitignore
+│   ├── eslint.config.js
+│   ├── index.html
 │   ├── package.json
 │   ├── package-lock.json
-│   └── server.js
+│   ├── README.md
+│   ├── readme.txt
+│   └── vite.config.js
 │
-├── public/
-│   ├── chest.png
-│   ├── favicon.svg
-│   ├── icon.svg
-│   ├── tfjs-backend-wasm.wasm
-│   ├── tfjs-backend-wasm-simd.wasm
-│   └── tfjs-backend-wasm-threaded-simd.wasm
-│   
-├── src/
-│   ├── pages/
-│   │   ├── Camera.jsx
-│   │   ├── CreateQuiz.jsx
-│   │   ├── EditProfile.jsx
-│   │   ├── FaceLogin.jsx
-│   │   ├── Home.jsx
-│   │   ├── HostConsole.jsx
-│   │   ├── HostLobby.jsx
-│   │   ├── JoinQuiz.jsx
-│   │   ├── Leaderboard.jsx
-│   │   ├── ManageQuizzes.jsx
-│   │   ├── Profile.jsx
-│   │   ├── QuizGame.jsx
-│   │   ├── QuizHome.jsx
-│   │   ├── Register.jsx
-│   │   └── ReRwgisterFace.jsx
-│   │
-│   ├── components/
-│   │   ├── Navbar.jsx
-│   │   ├── ProtectRoute.jsx
-│   │   └── TrackedPlayerVideo.jsx
-│   │
-│   ├── styles/
-│   │   ├── Camera.css
-│   │   ├── CreateQuiz.css
-│   │   ├── EditProfile.css
-│   │   ├── FaceLogin.css
-│   │   ├── Home.css
-│   │   ├── HostConsole.css
-│   │   ├── HostLobby.css
-│   │   ├── JoinQuiz.css
-│   │   ├── Leaderboard.css
-│   │   ├── ManageQuizzes.css
-│   │   ├── Profile.css
-│   │   ├── QuizGame.css
-│   │   ├── QuizHome.css
-│   │   ├── Register.css
-│   │   ├── ReRwgisterFace.css
-│   │   └── TrackedPlayerVideo.css
-│   │
-│   ├── App.css
-│   ├── App.jsx
-│   ├── index.css
-│   └── main.jsx
-│   
-├── .gitignore
-├── eslint.config.js
-├── index.html
-├── package.json
-├── package-lock.json
-├── README.md
-└── vite.config.js
+├── doc/    
+│   ├── 專題_三上期末報告書(現已改為ARVisionLink).pdf
+│   ├── 專題_設計文件書.pdf
+│   ├── 專題_需求規格書(現已改為ARVisionLink).pdf
+│   ├── 第一次上台簡報.pdf
+│   └── 第二次上台簡報.pdf
+│
+├── Ignore
+├── OLD_README.md
+└── README.md
 ```
 
 ---

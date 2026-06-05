@@ -70,7 +70,7 @@ AR Vision Link 是一套結合 擴增實境（AR）、WebRTC 即時視訊串流�
 
 # 系統架構
 
-![系統架構圖](./src/assets/架構圖.png)
+![系統架構圖](./ar-vision-link/src/assets/架構圖.png)
 
 ---
 
@@ -93,7 +93,7 @@ AR Vision Link 是一套結合 擴增實境（AR）、WebRTC 即時視訊串流�
 
 # 系統流程
 
-![系統流程圖](./src/assets/流程圖.png)
+![系統流程圖](./ar-vision-link/src/assets/流程圖.png)
 
 ---
 

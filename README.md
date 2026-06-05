@@ -194,9 +194,6 @@ AR-VISION-LINK/
 │   │   └── server.js
 │   │
 │   ├── public/                         # 靜態資源與 WebAssembly 模型
-│   │   ├── chest.png
-│   │   ├── favicon.svg
-│   │   ├── icon.svg
 │   │   ├── tfjs-backend-wasm.wasm
 │   │   ├── tfjs-backend-wasm-simd.wasm
 │   │   └── tfjs-backend-wasm-threaded-simd.wasm
@@ -256,15 +253,13 @@ AR-VISION-LINK/
 │   ├── readme.txt
 │   └── vite.config.js
 │
-├── doc/                             # 系統相關文件與簡報    
+├── doc/                                # 系統相關文件與簡報    
 │   ├── 專題_三上期末報告書(現已改為ARVisionLink).pdf
 │   ├── 專題_設計文件書.pdf
 │   ├── 專題_需求規格書(現已改為ARVisionLink).pdf
 │   ├── 第一次上台簡報.pdf
 │   └── 第二次上台簡報.pdf
 │
-├── Ignore
-├── OLD_README.md
 └── README.md
 ```
 
@@ -275,7 +270,7 @@ AR-VISION-LINK/
 本專案的相關文件皆存放於 [`doc/`](./doc/) 資料夾底下，歡迎查閱：
 - 三上期末報告書
 - 需求規格書
-- 設計文件書
+- 設計文件書(包含詳細流程圖、使用案例圖、活動圖)
 - 第1次上台簡報
 - 第2次上台簡報
 

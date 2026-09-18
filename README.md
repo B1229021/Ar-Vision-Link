@@ -144,7 +144,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 題庫建立、題庫管理與歷史紀錄集中在同一個控制中心。
 
 <div align="center">
-  <img src="public/generated/quiz-center.png" alt="Quiz Center 題庫控制中心" width="80%" />
+  <img src="ar-vision-link/public/generated/quiz-center.png" alt="Quiz Center 題庫控制中心" width="80%" />
 </div>
 
 ### 遊戲畫面
@@ -152,7 +152,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 玩家作答與主持人控制台即時同步，完整呈現從 Lobby 到即時答題的遊戲流程。
 
 <div align="center">
-  <img src="public/generated/game-overview.png" alt="遊戲 Lobby、主持人控制台與玩家答題畫面" width="80%" />
+  <img src="ar-vision-link/public/generated/game-overview.png" alt="遊戲 Lobby、主持人控制台與玩家答題畫面" width="80%" />
 </div>
 
 ### AR Quiz
@@ -160,7 +160,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 展示手勢辨識、相機背景、答案區域與即時回饋。
 
 <div align="center">
-  <img src="public/generated/ar-quiz-answer.png" alt="AR 手勢作答畫面" width="28%" />
+  <img src="ar-vision-link/public/generated/ar-quiz-answer.png" alt="AR 手勢作答畫面" width="28%" />
 </div>
 
 ### AR 自拍
@@ -168,8 +168,8 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 可將多種 2D 與 3D 濾鏡整理成一張橫向展示圖。
 
 <div align="center">
-  <img src="public/generated/ar-camera-entry.png" alt="AR Camera 模式選擇畫面" width="28%" />
-  <img src="public/generated/ar-camera-selfie.png" alt="AR Camera 自拍特效畫面" width="28%" />
+  <img src="ar-vision-link/public/generated/ar-camera-entry.png" alt="AR Camera 模式選擇畫面" width="28%" />
+  <img src="ar-vision-link/public/generated/ar-camera-selfie.png" alt="AR Camera 自拍特效畫面" width="28%" />
 </div>
 
 ### 虛擬替身換裝
@@ -177,7 +177,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 展示角色預覽、分類選擇與不同完成造型。
 
 <div align="center">
-  <img src="public/generated/home-avatar-dressup.png" alt="虛擬替身換裝介面" width="80%" />
+  <img src="ar-vision-link/public/generated/home-avatar-dressup.png" alt="虛擬替身換裝介面" width="80%" />
 </div>
 
 ---
@@ -441,6 +441,25 @@ ar-vision-link/
 
 # 報告影片 & 專題demo
 
-- 第2次上台簡報_錄影 (位於主目錄下方 .mp4 檔)
+- [第2次上台簡報_錄影](./videos/第2次上台簡報_錄影.mp4)
+
+影片檔案統一存放於 [`videos/`](./videos/) 資料夾。
+
+---
+
+# 開發團隊
+
+**長庚大學 資訊工程學系**
+
+- B1229006 陳語嫻
+- B1229021 黃星昊
+- B1229031 黃柏瑞
+- B1229049 陳泓均
+
+---
+
+# 專案倉庫說明
+
+本 GitHub 倉庫（[B1229021/Ar-Vision-Link](https://github.com/B1229021/Ar-Vision-Link)）僅供專題成果展示使用；本專案實際的開發與版本維護皆於 [B1229049/ar-vision-link](https://github.com/B1229049/ar-vision-link) 進行。
 
 ---

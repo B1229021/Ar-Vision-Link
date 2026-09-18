@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
+import AvatarRenderer from "../components/AvatarRenderer";
+import LobbyProfileModal from "../components/LobbyProfileModal";
+import ProfileImage from "../components/ProfileImage";
 import "../styles/HostLobby.css";
 
 function HostLobby() {
@@ -14,6 +17,9 @@ function HostLobby() {
   const [currentUser, setCurrentUser] = useState(null);
   const [quizzes, setQuizzes] = useState([]);
   const [selectedQuizId, setSelectedQuizId] = useState("");
+
+  const [gameMode, setGameMode] = useState("choice");
+
   const [session, setSession] = useState(null);
   const [quiz, setQuiz] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -22,6 +28,9 @@ function HostLobby() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [dissolving, setDissolving] = useState(false);
+  const [playerPanelOpen, setPlayerPanelOpen] = useState(false);
+  const [profileUser, setProfileUser] = useState(null);
 
   useEffect(() => {
     const savedUser = localStorage.getItem("currentUser");
@@ -35,6 +44,19 @@ function HostLobby() {
     setCurrentUser(user);
     loadMyQuizzes(user.id);
   }, [navigate]);
+
+  useEffect(() => {
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session) return undefined;
+
+    document.body.classList.add("room-focus-mode");
+    return () => document.body.classList.remove("room-focus-mode");
+  }, [session]);
 
   async function loadMyQuizzes(userId) {
     try {
@@ -81,6 +103,7 @@ function HostLobby() {
         },
         body: JSON.stringify({
           quiz_id: Number(selectedQuizId),
+          game_mode: gameMode,
         }),
       });
 
@@ -92,10 +115,21 @@ function HostLobby() {
         return;
       }
 
-      setSession(result.session);
-      localStorage.setItem("hostGameSession", JSON.stringify(result.session));
+      const createdSession = {
+        ...result.session,
+        game_mode:
+          result.session?.game_mode ||
+          gameMode,
+      };
 
-      connectSocket(result.session.session_id, currentUser.id);
+      setSession(createdSession);
+
+      localStorage.setItem(
+        "hostGameSession",
+        JSON.stringify(createdSession)
+      );
+
+      connectSocket(createdSession.session_id, currentUser.id);
     } catch (err) {
       console.error(err);
       alert("建立房間時發生錯誤");
@@ -115,25 +149,39 @@ function HostLobby() {
 
     socketRef.current = socket;
 
-    socket.emit("join-session", {
-      sessionId: Number(sessionId),
-      userId: Number(userId),
-      role: "host",
+    socket.on("connect", () => {
+      socket.emit("join-session", {
+        sessionId: Number(sessionId),
+        userId: Number(userId),
+        role: "host",
+      });
     });
 
     socket.on("session-sync", (data) => {
-      setSession(data.session);
+      const syncedSession = {
+        ...data.session,
+        game_mode:
+          data.session?.game_mode ||
+          gameMode,
+      };
+
+      setSession(syncedSession);
       setQuiz(data.quiz);
       setQuestions(data.questions || []);
       setPlayers(data.leaderboard || []);
 
-      if (data.session?.game_finished) {
-        navigate(`/quiz/leaderboard/${data.session.session_id}`);
+      localStorage.setItem(
+        "hostGameSession",
+        JSON.stringify(syncedSession)
+      );
+
+      if (syncedSession?.game_finished) {
+        navigate(`/quiz/leaderboard/${syncedSession.session_id}`);
         return;
       }
 
-      if (data.session?.started_at && !data.session?.game_finished) {
-        navigate(`/quiz/host-console/${data.session.session_id}`);
+      if (syncedSession?.started_at && !syncedSession?.game_finished) {
+        navigate(`/quiz/host-console/${syncedSession.session_id}`);
       }
     });
 
@@ -147,7 +195,20 @@ function HostLobby() {
 
     socket.on("game-started", ({ session }) => {
       setStarting(false);
-      navigate(`/quiz/host-console/${session.session_id}`);
+
+      const startedSession = {
+        ...session,
+        game_mode:
+          session?.game_mode ||
+          gameMode,
+      };
+
+      localStorage.setItem(
+        "hostGameSession",
+        JSON.stringify(startedSession)
+      );
+
+      navigate(`/quiz/host-console/${startedSession.session_id}`);
     });
 
     socket.on("game-finished", ({ session }) => {
@@ -157,6 +218,12 @@ function HostLobby() {
     socket.on("socket-error", (data) => {
       alert(data.error || "Socket 發生錯誤");
       setStarting(false);
+    });
+
+    socket.emit("join-session", {
+      sessionId: Number(sessionId),
+      userId: Number(userId),
+      role: "host",
     });
   }
 
@@ -185,6 +252,28 @@ function HostLobby() {
     alert("房號已複製！");
   }
 
+  function openPlayerProfile(user) {
+    if (!user || Number(user.id) === Number(currentUser?.id)) return;
+    setProfileUser(user);
+  }
+
+  function getJoinUrl() {
+    if (!session?.room_code) return "";
+
+    const basePath = import.meta.env.BASE_URL || "/";
+    const cleanBasePath = basePath.endsWith("/") ? basePath : `${basePath}/`;
+
+    return `${window.location.origin}${cleanBasePath}quiz/join?room=${session.room_code}`;
+  }
+
+  async function copyJoinUrl() {
+    const joinUrl = getJoinUrl();
+    if (!joinUrl) return;
+
+    await navigator.clipboard.writeText(joinUrl);
+    alert("房間網址已複製！");
+  }
+
   function startGame() {
     if (!session?.session_id || starting) return;
 
@@ -200,11 +289,46 @@ function HostLobby() {
     });
   }
 
-  useEffect(() => {
-    return () => {
+  async function dissolveRoom() {
+    if (!session?.session_id || !currentUser?.id || dissolving) return;
+
+    const confirmed = window.confirm(
+      "確定要解散此房間嗎？所有玩家都會立即返回主頁。"
+    );
+    if (!confirmed) return;
+
+    setDissolving(true);
+
+    try {
+      const response = await fetch(
+        `${BACKEND_URL}/api/game-sessions/${session.session_id}/dissolve`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ host_id: currentUser.id }),
+        }
+      );
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        throw new Error(result.error || "無法解散房間");
+      }
+
       socketRef.current?.disconnect();
-    };
-  }, []);
+      socketRef.current = null;
+      localStorage.removeItem("hostGameSession");
+      navigate("/", { replace: true });
+    } catch (err) {
+      alert(`解散房間失敗：${err.message}`);
+      setDissolving(false);
+    }
+  }
+
+  function getModeLabel(mode) {
+    if (mode === "normal") return "普通模式";
+    if (mode === "ar") return "AR 模式";
+    return "玩家自行選擇";
+  }
 
   if (loading) {
     return (
@@ -217,13 +341,17 @@ function HostLobby() {
   }
 
   return (
-    <div className="host-lobby-page">
+    <div className={session ? "host-lobby-page active-room" : "host-lobby-page"}>
       <div className="host-lobby-card">
-        <h2>主持遊戲</h2>
+        {!session && (
+          <>
+            <h2>創建答題房間</h2>
 
-        <p className="host-subtitle">
-          選擇你建立的測驗，產生房號讓玩家加入。
-        </p>
+            <p className="host-subtitle">
+              選擇你建立的測驗，設定答題模式，產生房號讓玩家加入。
+            </p>
+          </>
+        )}
 
         {!session && (
           <>
@@ -255,6 +383,54 @@ function HostLobby() {
                   </select>
                 </div>
 
+                <div className="host-field">
+                  <label>答題模式</label>
+
+                  <div className="host-mode-box">
+                    <button
+                      type="button"
+                      className={
+                        gameMode === "normal"
+                          ? "host-mode-btn active"
+                          : "host-mode-btn"
+                      }
+                      aria-pressed={gameMode === "normal"}
+                      onClick={() => setGameMode("normal")}
+                    >
+                      普通模式
+                      <span>玩家只能使用一般答題畫面</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={
+                        gameMode === "ar"
+                          ? "host-mode-btn active"
+                          : "host-mode-btn"
+                      }
+                      aria-pressed={gameMode === "ar"}
+                      onClick={() => setGameMode("ar")}
+                    >
+                      AR 模式
+                      <span>玩家只能使用 AR Camera 答題</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={
+                        gameMode === "choice"
+                          ? "host-mode-btn active"
+                          : "host-mode-btn"
+                      }
+                      aria-pressed={gameMode === "choice"}
+                      onClick={() => setGameMode("choice")}
+                    >
+                      玩家自行選擇
+                      <span>玩家開始前自行選普通或 AR</span>
+                    </button>
+                  </div>
+                </div>
+
                 <button
                   className="host-btn primary"
                   onClick={createGameSession}
@@ -268,89 +444,180 @@ function HostLobby() {
         )}
 
         {session && (
-          <div className="room-box">
-            <p className="room-label">房號 Room Code</p>
+          <div className="wayground-lobby">
+            <button
+              type="button"
+              className="host-player-drawer-toggle"
+              onClick={() => setPlayerPanelOpen((open) => !open)}
+            >
+              玩家名單
+            </button>
 
-            <div className="room-code">{session.room_code}</div>
+            <section className="wayground-join-board">
+              <div className="join-board-main">
+                <div className="join-board-row">
+                  <div className="join-copy">
+                    <span>房間連結</span>
+                    <strong className="join-url">{getJoinUrl()}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="join-copy-btn"
+                    onClick={copyJoinUrl}
+                    aria-label="複製房間網址"
+                  >
+                    複製
+                  </button>
+                </div>
 
-            <p className="room-hint">
-              請玩家到「加入測驗」輸入這組房號。
-            </p>
-
-            <div className="host-session-info">
-              <div>
-                <span>測驗</span>
-                <strong>{quiz?.title || "載入中..."}</strong>
+                <div className="join-board-row">
+                  <div className="join-copy">
+                    <span>房間 PIN 碼</span>
+                    <strong className="join-code">{session.room_code}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="join-copy-btn"
+                    onClick={copyRoomCode}
+                    aria-label="複製房號"
+                  >
+                    複製
+                  </button>
+                </div>
               </div>
 
-              <div>
-                <span>題目數</span>
-                <strong>{questions.length} 題</strong>
+              <div className="join-board-meta">
+                <div>
+                  <span>Quiz</span>
+                  <strong>{quiz?.title || "載入中..."}</strong>
+                </div>
+                <div>
+                  <span>Questions</span>
+                  <strong>{questions.length}</strong>
+                </div>
+                <div>
+                  <span>Players</span>
+                  <strong>{players.length}</strong>
+                </div>
+                <div>
+                  <span>Mode</span>
+                  <strong>{getModeLabel(session.game_mode || gameMode)}</strong>
+                </div>
               </div>
+            </section>
 
-              <div>
-                <span>玩家</span>
-                <strong>{players.length} 人</strong>
-              </div>
-
-              <div>
-                <span>狀態</span>
-                <strong>{session.started_at ? "已開始" : "等待中"}</strong>
-              </div>
-            </div>
-
-            <div className="host-player-box">
-              <h3>即時玩家列表</h3>
-
+            <section className="lobby-avatar-stage">
               {players.length === 0 ? (
-                <p className="host-player-hint">目前還沒有玩家加入。</p>
+                <div className="lobby-empty-players">
+                  等待玩家加入...
+                </div>
               ) : (
-                <div className="host-player-list">
+                <div className="lobby-avatar-list">
                   {players.map((record) => {
                     const user = record.users;
 
                     return (
-                      <div className="host-player-item" key={record.record_id}>
-                        <div className="host-player-avatar">
-                          {user?.avatar_url ? (
-                            <img src={user.avatar_url} alt="avatar" />
-                          ) : (
-                            user?.name?.charAt(0) || "U"
-                          )}
-                        </div>
-
-                        <div className="host-player-info">
-                          <strong>{user?.name || "未知玩家"}</strong>
-                          <span>@{user?.nickname || "unknown"}</span>
-                        </div>
-
-                        <div className="host-player-score">
-                          {record.score || 0} 分
-                        </div>
-                      </div>
+                      <button
+                        type="button"
+                        className="lobby-avatar-player"
+                        key={record.record_id}
+                        onClick={() => openPlayerProfile(user)}
+                        aria-label={`查看 ${user?.name || "玩家"} 的個人資料`}
+                      >
+                        <strong>{user?.name || "未知玩家"}</strong>
+                        <AvatarRenderer
+                          config={user?.avatar_config}
+                          className="lobby-avatar-renderer"
+                        />
+                      </button>
                     );
                   })}
                 </div>
               )}
+            </section>
+
+            <div className="lobby-controls">
+              <button
+                className="lobby-start-btn"
+                onClick={startGame}
+                disabled={starting}
+              >
+                {starting ? "開始中..." : "開始遊戲"}
+              </button>
+
+              <button
+                type="button"
+                className="host-btn lobby-dissolve-btn"
+                onClick={dissolveRoom}
+                disabled={dissolving}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 5H5v14h5" />
+                  <path d="M13 8l4 4-4 4" />
+                  <path d="M17 12H9" />
+                </svg>
+                <span>{dissolving ? "解散中..." : "解散此房間"}</span>
+              </button>
             </div>
 
-            <button className="host-btn secondary" onClick={copyRoomCode}>
-              複製房號
-            </button>
+            {playerPanelOpen && (
+              <aside className="host-player-side-panel">
+                <div className="host-player-side-header">
+                  <h3>玩家名單</h3>
+                  <button
+                    type="button"
+                    className="host-player-side-close"
+                    onClick={() => setPlayerPanelOpen(false)}
+                    aria-label="關閉玩家名單"
+                  >
+                    ×
+                  </button>
+                </div>
 
-            <button
-              className="host-btn primary"
-              onClick={startGame}
-              disabled={starting}
-            >
-              {starting ? "開始中..." : "開始遊戲"}
-            </button>
+                {players.length === 0 ? (
+                  <p className="host-player-hint">目前還沒有玩家加入。</p>
+                ) : (
+                  <div className="host-player-side-list">
+                    {players.map((record) => {
+                      const user = record.users;
+
+                      return (
+                        <button
+                          type="button"
+                          className="host-player-side-item"
+                          key={record.record_id}
+                          onClick={() => openPlayerProfile(user)}
+                          aria-label={`查看 ${user?.name || "玩家"} 的個人資料`}
+                        >
+                          <ProfileImage
+                            user={user}
+                            className="host-player-avatar-head"
+                          />
+
+                          <strong>{user?.name || "未知玩家"}</strong>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </aside>
+            )}
+
+            <LobbyProfileModal
+              user={profileUser}
+              onClose={() => setProfileUser(null)}
+            />
           </div>
         )}
 
-        <button className="host-btn ghost" onClick={() => navigate("/quiz")}>
-          返回 AR Vision Link
-        </button>
+        {!session && (
+          <button
+            className="host-btn ghost quiz-center-return"
+            onClick={() => navigate("/quiz")}
+          >
+            返回 Quiz Center
+          </button>
+        )}
       </div>
     </div>
   );

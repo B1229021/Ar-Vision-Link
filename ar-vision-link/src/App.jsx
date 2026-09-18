@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import Register from "./pages/Register";
 import Camera from "./pages/Camera";
+import CameraHub from "./pages/CameraHub";
 import FaceLogin from "./pages/FaceLogin";
 import Profile from "./pages/Profile";
 import EditProfile from "./pages/EditProfile";
@@ -16,15 +17,29 @@ import QuizGame from "./pages/QuizGame";
 import Leaderboard from "./pages/Leaderboard";
 import HostConsole from "./pages/HostConsole";
 import ManageQuizzes from "./pages/ManageQuizzes";
+import QuizHistory from "./pages/QuizHistory";
+import ARQuizGame from "./pages/ARQuizGame";
+import AvatarDressup from "./pages/AvatarDressup";
+import AvatarAdmin from "./pages/AvatarAdmin";
+import ARSelfie from "./pages/ARSelfie";
+import Store from "./pages/Store";
+
 
 import Navbar from "./components/Navbar";
+import MobileBottomNav from "./components/MobileBottomNav";
 import ProtectedRoute from "./components/ProtectedRoute";
+import QuizDashboardLayout from "./components/QuizDashboardLayout";
+import "./styles/GlobalPageTheme.css";
+
+import AdminRoute from "./components/AdminRoute";
+import Admin from "./pages/Admin";
 
 function App() {
   return (
-    
+
     <BrowserRouter basename="/ar-vision-link">
       <Navbar />
+      <MobileBottomNav />
 
       <Routes>
         <Route path="/" element={<Home />} />
@@ -44,7 +59,25 @@ function App() {
           path="/camera"
           element={
             <ProtectedRoute>
+              <CameraHub />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/camera/recognition"
+          element={
+            <ProtectedRoute>
               <Camera />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/ar-selfie"
+          element={
+            <ProtectedRoute>
+              <ARSelfie />
             </ProtectedRoute>
           }
         />
@@ -71,37 +104,17 @@ function App() {
           path="/quiz"
           element={
             <ProtectedRoute>
-              <QuizHome />
+              <QuizDashboardLayout />
             </ProtectedRoute>
           }
-        />
-
-        <Route
-          path="/quiz/create"
-          element={
-            <ProtectedRoute>
-              <CreateQuiz />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/quiz/join"
-          element={
-            <ProtectedRoute>
-              <JoinQuiz />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/quiz/host"
-          element={
-            <ProtectedRoute>
-              <HostLobby />
-            </ProtectedRoute>
-          }
-        />
+        >
+          <Route index element={<QuizHome />} />
+          <Route path="create" element={<CreateQuiz />} />
+          <Route path="join" element={<JoinQuiz />} />
+          <Route path="host" element={<HostLobby />} />
+          <Route path="manage" element={<ManageQuizzes />} />
+          <Route path="history" element={<QuizHistory />} />
+        </Route>
 
         <Route
           path="/quiz/game/:sessionId"
@@ -130,12 +143,23 @@ function App() {
           }
         />
 
-        <Route path="/quiz/manage" element={<ManageQuizzes />} />
+        <Route path="/ar-quiz/:sessionId" element={<ProtectedRoute><ARQuizGame /></ProtectedRoute>} />
+        <Route path="/avatar-dressup" element={<ProtectedRoute><AvatarDressup /></ProtectedRoute>} />
+        <Route path="/store" element={<ProtectedRoute><Store /></ProtectedRoute>} />
+        <Route path="/avatar-admin" element={<AvatarAdmin />} />
 
-        
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <Admin />
+            </AdminRoute>
+          }
+        />
+
       </Routes>
 
-      
+
     </BrowserRouter>
   );
 }

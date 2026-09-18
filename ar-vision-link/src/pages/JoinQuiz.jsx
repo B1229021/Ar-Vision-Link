@@ -1,15 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { io } from "socket.io-client";
+import AvatarRenderer from "../components/AvatarRenderer";
+import LobbyProfileModal from "../components/LobbyProfileModal";
+import ProfileImage from "../components/ProfileImage";
 import "../styles/JoinQuiz.css";
 
 function JoinQuiz() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const autoRoomCode = searchParams.get("room")?.trim().toUpperCase() || "";
 
   const BACKEND_URL =
     import.meta.env.VITE_API_URL || "https://ar-vision-link.onrender.com";
 
   const socketRef = useRef(null);
+  const autoJoinAttemptedRef = useRef(false);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [roomCode, setRoomCode] = useState("");
@@ -20,6 +26,12 @@ function JoinQuiz() {
   const [quiz, setQuiz] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [players, setPlayers] = useState([]);
+  const [playerPanelOpen, setPlayerPanelOpen] = useState(false);
+  const [profileUser, setProfileUser] = useState(null);
+
+  const [playMode, setPlayMode] = useState(
+    localStorage.getItem("quizPlayMode") || "normal"
+  );
 
   useEffect(() => {
     const savedUser = localStorage.getItem("currentUser");
@@ -31,15 +43,93 @@ function JoinQuiz() {
 
     setCurrentUser(JSON.parse(savedUser));
 
+    const roomFromUrl = searchParams.get("room");
+
+    if (roomFromUrl) {
+      setRoomCode(roomFromUrl.toUpperCase());
+    }
+
     return () => {
       socketRef.current?.disconnect();
     };
-  }, [navigate]);
+  }, [navigate, searchParams]);
 
-  async function handleJoinQuiz() {
-    if (!currentUser) return;
+  useEffect(() => {
+    if (!joined || !session?.session_id) return undefined;
 
-    if (!roomCode.trim()) {
+    function handlePageHide() {
+      socketRef.current?.emit("leave-session");
+    }
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [joined, session?.session_id]);
+
+  useEffect(() => {
+    if (!joined) return undefined;
+
+    document.body.classList.add("room-focus-mode");
+    return () => document.body.classList.remove("room-focus-mode");
+  }, [joined]);
+
+  useEffect(() => {
+    if (!currentUser || !autoRoomCode || autoJoinAttemptedRef.current) return;
+
+    autoJoinAttemptedRef.current = true;
+    handleJoinQuiz(autoRoomCode, currentUser);
+  }, [autoRoomCode, currentUser]);
+
+  function getFinalPlayMode(targetSession = session) {
+    const gameMode = targetSession?.game_mode || "choice";
+
+    if (gameMode === "normal") return "normal";
+    if (gameMode === "ar") return "ar";
+
+    return localStorage.getItem("quizPlayMode") || playMode || "normal";
+  }
+
+  function openPlayerProfile(user) {
+    if (!user || Number(user.id) === Number(currentUser?.id)) return;
+    setPlayerPanelOpen(false);
+    setProfileUser(user);
+  }
+
+  function goToGame(targetSession = session) {
+    if (!targetSession?.session_id) return;
+
+    const finalMode = getFinalPlayMode(targetSession);
+
+    if (finalMode === "ar") {
+      navigate(`/ar-quiz/${targetSession.session_id}`);
+    } else {
+      navigate(`/quiz/game/${targetSession.session_id}`);
+    }
+  }
+
+  async function updatePlayMode(mode) {
+    if (mode === "ar") {
+      const ok = await checkCameraPermission();
+
+      if (!ok) {
+        setPlayMode("normal");
+        localStorage.setItem("quizPlayMode", "normal");
+        return;
+      }
+    }
+
+    setPlayMode(mode);
+    localStorage.setItem("quizPlayMode", mode);
+  }
+
+  async function handleJoinQuiz(roomCodeOverride, userOverride) {
+    const joiningUser = userOverride || currentUser;
+    const targetRoomCode = String(roomCodeOverride || roomCode)
+      .trim()
+      .toUpperCase();
+
+    if (!joiningUser) return;
+
+    if (!targetRoomCode) {
       alert("請輸入房號");
       return;
     }
@@ -48,7 +138,7 @@ function JoinQuiz() {
 
     try {
       const joinResponse = await fetch(
-        `${BACKEND_URL}/api/game-sessions/join/${roomCode.trim()}`
+        `${BACKEND_URL}/api/game-sessions/join/${targetRoomCode}`
       );
 
       const joinResult = await joinResponse.json();
@@ -56,6 +146,7 @@ function JoinQuiz() {
       if (!joinResponse.ok || joinResult.error) {
         alert("加入失敗：" + (joinResult.error || "找不到房間"));
         setJoining(false);
+        if (roomCodeOverride) navigate("/quiz/join", { replace: true });
         return;
       }
 
@@ -70,7 +161,7 @@ function JoinQuiz() {
           },
           body: JSON.stringify({
             session_id: joinedSession.session_id,
-            user_id: currentUser.id,
+            user_id: joiningUser.id,
           }),
         }
       );
@@ -80,7 +171,16 @@ function JoinQuiz() {
       if (!recordResponse.ok || recordResult.error) {
         alert("加入玩家紀錄失敗：" + (recordResult.error || "未知錯誤"));
         setJoining(false);
+        if (roomCodeOverride) navigate("/quiz/join", { replace: true });
         return;
+      }
+
+      if (joinedSession.game_mode === "ar") {
+        updatePlayMode("ar");
+      }
+
+      if (joinedSession.game_mode === "normal") {
+        updatePlayMode("normal");
       }
 
       localStorage.setItem("currentGameSession", JSON.stringify(joinedSession));
@@ -92,10 +192,11 @@ function JoinQuiz() {
       setSession(joinedSession);
       setJoined(true);
 
-      connectSocket(joinedSession.session_id, currentUser.id);
+      connectSocket(joinedSession.session_id, joiningUser.id);
     } catch (err) {
       console.error(err);
       alert("加入測驗時發生錯誤");
+      if (roomCodeOverride) navigate("/quiz/join", { replace: true });
     }
 
     setJoining(false);
@@ -112,10 +213,12 @@ function JoinQuiz() {
 
     socketRef.current = socket;
 
-    socket.emit("join-session", {
-      sessionId: Number(sessionId),
-      userId: Number(userId),
-      role: "player",
+    socket.on("connect", () => {
+      socket.emit("join-session", {
+        sessionId: Number(sessionId),
+        userId: Number(userId),
+        role: "player",
+      });
     });
 
     socket.on("session-sync", (data) => {
@@ -124,13 +227,23 @@ function JoinQuiz() {
       setQuestions(data.questions || []);
       setPlayers(data.leaderboard || []);
 
+      localStorage.setItem("currentGameSession", JSON.stringify(data.session));
+
+      if (data.session?.game_mode === "ar") {
+        updatePlayMode("ar");
+      }
+
+      if (data.session?.game_mode === "normal") {
+        updatePlayMode("normal");
+      }
+
       if (data.session?.game_finished) {
         navigate(`/quiz/leaderboard/${data.session.session_id}`);
         return;
       }
 
       if (data.session?.started_at && !data.session?.game_finished) {
-        navigate(`/quiz/game/${data.session.session_id}`);
+        goToGame(data.session);
       }
     });
 
@@ -143,11 +256,21 @@ function JoinQuiz() {
     });
 
     socket.on("game-started", ({ session }) => {
-      navigate(`/quiz/game/${session.session_id}`);
+      setSession(session);
+      localStorage.setItem("currentGameSession", JSON.stringify(session));
+      goToGame(session);
     });
 
     socket.on("game-finished", ({ session }) => {
       navigate(`/quiz/leaderboard/${session.session_id}`);
+    });
+
+    socket.on("room-dissolved", () => {
+      localStorage.removeItem("currentGameSession");
+      localStorage.removeItem("currentPlayerRecord");
+      socket.disconnect();
+      socketRef.current = null;
+      navigate("/", { replace: true, state: { roomDissolved: true } });
     });
 
     socket.on("socket-error", (data) => {
@@ -174,7 +297,22 @@ function JoinQuiz() {
   }
 
   function leaveRoom() {
-    socketRef.current?.disconnect();
+    const socket = socketRef.current;
+
+    if (socket?.connected) {
+      let disconnected = false;
+      const disconnect = () => {
+        if (disconnected) return;
+        disconnected = true;
+        socket.disconnect();
+      };
+
+      socket.timeout(1000).emit("leave-session", {}, disconnect);
+      window.setTimeout(disconnect, 1100);
+    } else {
+      socket?.disconnect();
+    }
+
     socketRef.current = null;
 
     setJoined(false);
@@ -188,6 +326,31 @@ function JoinQuiz() {
     localStorage.removeItem("currentPlayerRecord");
   }
 
+  function getModeLabel(mode) {
+    if (mode === "normal") return "普通模式";
+    if (mode === "ar") return "AR 模式";
+    return "玩家自行選擇";
+  }
+
+  async function checkCameraPermission() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+
+      stream.getTracks().forEach((track) => track.stop());
+
+      return true;
+    } catch (err) {
+      alert(
+        "無法開啟相機。若要使用 AR 模式，請允許瀏覽器相機權限，或改用普通模式。"
+      );
+
+      return false;
+    }
+  }
+
   if (!currentUser) {
     return (
       <div className="join-quiz-page">
@@ -199,82 +362,158 @@ function JoinQuiz() {
   }
 
   if (joined) {
+    const gameMode = session?.game_mode || "choice";
+    const canChooseMode = gameMode === "choice";
+    const lobbyMembers = players.map((record) => ({
+        key: `player-${record.record_id}`,
+        user: record.users,
+      }));
+
     return (
-      <div className="join-quiz-page">
-        <div className="join-quiz-card joined">
-          <h2>已加入房間</h2>
-
-          <p className="join-quiz-subtitle">
-            等待主持人開始遊戲，開始後會自動進入答題畫面。
-          </p>
-
-          <div className="joined-room-panel">
-            <p className="joined-room-label">Room Code</p>
-            <div className="joined-room-code">{session?.room_code}</div>
-          </div>
-
-          <div className="joined-info-box">
-            <div className="joined-info-row">
-              <span>測驗名稱</span>
+      <div className="join-quiz-page waiting-room-page">
+        <div className="join-quiz-card joined waiting-room-card">
+          <div className="waiting-room-summary">
+            <div>
+              <span>測驗</span>
               <strong>{quiz?.title || "載入中..."}</strong>
             </div>
-
-            <div className="joined-info-row">
-              <span>題目數量</span>
+            <div>
+              <span>題目</span>
               <strong>{questions.length} 題</strong>
             </div>
-
-            <div className="joined-info-row">
-              <span>玩家數量</span>
+            <div>
+              <span>玩家</span>
               <strong>{players.length} 人</strong>
             </div>
-
-            <div className="joined-info-row">
-              <span>狀態</span>
-              <strong>{session?.started_at ? "已開始" : "等待中"}</strong>
+            <div>
+              <span>模式</span>
+              <div className="summary-mode-actions">
+                <button
+                  type="button"
+                  className={playMode === "normal" ? "active" : ""}
+                  onClick={() => updatePlayMode("normal")}
+                  disabled={!canChooseMode && gameMode !== "normal"}
+                >
+                  普通
+                </button>
+                <button
+                  type="button"
+                  className={playMode === "ar" ? "active" : ""}
+                  onClick={() => updatePlayMode("ar")}
+                  disabled={!canChooseMode && gameMode !== "ar"}
+                >
+                  AR
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="joined-player-box">
-            <h3>玩家列表</h3>
+          <div className="waiting-room-list-toggle-row">
+            <button
+              type="button"
+              className="waiting-room-list-toggle"
+              onClick={() => setPlayerPanelOpen((open) => !open)}
+            >
+              玩家名單
+            </button>
+          </div>
 
-            {players.length === 0 ? (
-              <p className="joined-player-hint">目前還沒有玩家。</p>
+          <div className="waiting-avatar-stage">
+            {lobbyMembers.length === 0 ? (
+              <p className="joined-player-hint">等待玩家加入...</p>
             ) : (
-              <div className="joined-player-list">
-                {players.map((record) => {
-                  const user = record.users;
-
+              <div className="waiting-avatar-list">
+                {lobbyMembers.map(({ key, user }) => {
                   return (
-                    <div className="joined-player-item" key={record.record_id}>
-                      <div className="joined-player-avatar">
-                        {user?.avatar_url ? (
-                          <img src={user.avatar_url} alt="avatar" />
-                        ) : (
-                          user?.name?.charAt(0) || "U"
-                        )}
-                      </div>
-
-                      <div className="joined-player-info">
-                        <strong>{user?.name || "未知玩家"}</strong>
-                        <span>@{user?.nickname || "unknown"}</span>
-                      </div>
-
-                      <div className="joined-player-score">
-                        {record.score || 0} 分
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      className="waiting-avatar-player"
+                      key={key}
+                      onClick={() => openPlayerProfile(user)}
+                      disabled={Number(user?.id) === Number(currentUser?.id)}
+                      aria-label={`查看 ${user?.name || "玩家"} 的個人資料`}
+                    >
+                      <strong>{user?.name || "未知玩家"}</strong>
+                      <AvatarRenderer
+                        config={user?.avatar_config}
+                        className="waiting-avatar-renderer"
+                      />
+                    </button>
                   );
                 })}
               </div>
             )}
           </div>
 
-          <div className="waiting-message">等待主持人開始遊戲...</div>
+          {playerPanelOpen && (
+            <div
+              className="waiting-player-overlay"
+              onClick={() => setPlayerPanelOpen(false)}
+            >
+              <section
+                className="waiting-player-panel"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="waiting-player-panel-header">
+                  <h3>玩家名單</h3>
+                  <button
+                    type="button"
+                    aria-label="關閉玩家名單"
+                    onClick={() => setPlayerPanelOpen(false)}
+                  >
+                    ×
+                  </button>
+                </div>
 
-          <button className="join-btn secondary" onClick={leaveRoom}>
+                <div className="waiting-player-list">
+                  {lobbyMembers.map(({ key, user }) => {
+                    return (
+                      <button
+                        type="button"
+                        className="waiting-player-chip"
+                        key={key}
+                        onClick={() => openPlayerProfile(user)}
+                        disabled={Number(user?.id) === Number(currentUser?.id)}
+                        aria-label={`查看 ${user?.name || "玩家"} 的個人資料`}
+                      >
+                        <ProfileImage
+                          user={user}
+                          className="waiting-player-head"
+                        />
+                        <strong>{user?.name || "未知玩家"}</strong>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          )}
+
+          <LobbyProfileModal
+            user={profileUser}
+            onClose={() => setProfileUser(null)}
+          />
+
+          <div className="waiting-message">
+            {session?.started_at
+              ? "遊戲已開始，正在進入答題畫面..."
+              : "等待主持人開始遊戲..."}
+          </div>
+
+          <button className="join-btn secondary leave-room-btn" onClick={leaveRoom}>
             離開房間
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (autoRoomCode) {
+    return (
+      <div className="join-quiz-page quick-joining-page">
+        <div className="quick-joining-status" role="status">
+          <span className="quick-joining-spinner" aria-hidden="true" />
+          <strong>正在加入房間...</strong>
         </div>
       </div>
     );
@@ -284,8 +523,8 @@ function JoinQuiz() {
     <div className="join-quiz-page">
       <div className="join-quiz-card">
         <div className="join-quiz-avatar">
-          {currentUser.avatar_url ? (
-            <img src={currentUser.avatar_url} alt="avatar" />
+          {currentUser.profile_url ? (
+            <img src={currentUser.profile_url} alt="profile" />
           ) : (
             currentUser.name?.charAt(0) || "U"
           )}
@@ -310,14 +549,14 @@ function JoinQuiz() {
 
         <button
           className="join-btn primary"
-          onClick={handleJoinQuiz}
+          onClick={() => handleJoinQuiz()}
           disabled={joining}
         >
           {joining ? "加入中..." : "加入測驗"}
         </button>
 
-        <button className="join-btn secondary" onClick={() => navigate("/quiz")}>
-          返回 AR Vision Link
+        <button className="join-btn secondary quiz-center-return" onClick={() => navigate("/quiz")}>
+          返回 Quiz Center
         </button>
       </div>
     </div>

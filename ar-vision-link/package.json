@@ -9,19 +9,25 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "store:calibrate": "vite --open /ar-vision-link/store-outfit-calibrator.html",
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "@google/genai": "^2.7.0",
+    "@mediapipe/tasks-vision": "^0.10.35",
     "@supabase/supabase-js": "^2.106.1",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-backend-wasm": "^4.22.0",
     "@tensorflow/tfjs-backend-webgl": "^4.22.0",
     "@vladmandic/face-api": "^1.7.15",
+    "@zxing/browser": "^0.2.1",
+    "qrcode": "^1.5.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.15.1",
     "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

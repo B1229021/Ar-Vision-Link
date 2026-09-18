@@ -1,24 +1,427 @@
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { BrowserQRCodeReader } from "@zxing/browser";
 import "../styles/Home.css";
 
-function Home() {
+function ShopIcon() {
   return (
-    <div className="page">
-      <div className="container">
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M15 25h34l-3 28H18l-3-28Z" />
+      <path d="M23 27v-7a9 9 0 0 1 18 0v7" />
+      <path d="m32 33 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2-4.5-4.4 6.2-.9L32 33Z" />
+    </svg>
+  );
+}
 
-        <h1>Web AR Project</h1>
+function QrIcon() {
+  return (
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M8 8h18v18H8V8Zm30 0h18v18H38V8ZM8 38h18v18H8V38Z" />
+      <path d="M14 14h6v6h-6v-6Zm30 0h6v6h-6v-6ZM14 44h6v6h-6v-6Zm24-6h8v8h-8v-8Zm10 0h8v8h-8v-8Zm-10 10h8v8h-8v-8Zm14 4h4v4h-4v-4Z" />
+    </svg>
+  );
+}
 
-        <Link to="/camera">📷 Camera Test</Link>
+function AvatarEditIcon() {
+  return (
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="27" cy="22" r="10" />
+      <path d="M10 52c1.8-10.2 7.6-15.3 17-15.3 5.1 0 9.2 1.5 12.1 4.5" />
+      <path d="m39 50 3.1-9.2L53.9 29 59 34.1 47.2 45.9 39 50Z" />
+      <path d="m50.8 32.1 5.1 5.1" />
+    </svg>
+  );
+}
 
-        <Link to="/register">📝 Register</Link>
+function extractRewardToken(value) {
+  try {
+    return new URL(value).searchParams.get("reward") || "";
+  } catch {
+    return value.match(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i)?.[0] || "";
+  }
+}
 
-        <Link to="/face-login">🔗 Login</Link>
+function QRScannerModal({ onClose, onReward }) {
+  const videoRef = useRef(null);
+  const controlsRef = useRef(null);
+  const [result, setResult] = useState("");
+  const [status, setStatus] = useState("正在啟動相機…");
+  const [restartKey, setRestartKey] = useState(0);
 
-        <Link to="/quiz/create">📅 創建會議</Link>
+  useEffect(() => {
+    let cancelled = false;
+    const videoElement = videoRef.current;
+    const reader = new BrowserQRCodeReader(undefined, {
+      delayBetweenScanAttempts: 250,
+    });
 
-        <Link to="/quiz/join">🔗 加入會議</Link>
+    async function startScanner() {
+      try {
+        const controls = await reader.decodeFromConstraints(
+          {
+            audio: false,
+            video: { facingMode: { ideal: "environment" } },
+          },
+          videoElement,
+          (scanResult) => {
+            if (!scanResult || cancelled) return;
+            const text = scanResult.getText();
+            const rewardToken = extractRewardToken(text);
+            if (rewardToken) {
+              controlsRef.current?.stop();
+              onReward(rewardToken);
+              return;
+            }
+            setResult(text);
+            setStatus("掃描成功");
+            controlsRef.current?.stop();
+          }
+        );
 
-      </div>
+        if (cancelled) controls.stop();
+        else controlsRef.current = controls;
+      } catch (err) {
+        if (cancelled) return;
+        console.error("QR scanner failed:", err);
+        setStatus(
+          err?.name === "NotAllowedError"
+            ? "需要相機權限才能掃描 QR Code"
+            : "無法啟動相機，請確認裝置與瀏覽器權限"
+        );
+      }
+    }
+
+    startScanner();
+
+    return () => {
+      cancelled = true;
+      controlsRef.current?.stop();
+      controlsRef.current = null;
+      const stream = videoElement?.srcObject;
+      stream?.getTracks?.().forEach((track) => track.stop());
+    };
+  }, [onReward, restartKey]);
+
+  return (
+    <div className="qr-scanner-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="qr-scanner-dialog" role="dialog" aria-modal="true" aria-labelledby="qr-scanner-title">
+        <header>
+          <div><h2 id="qr-scanner-title">掃描 QR Code</h2></div>
+        </header>
+        <div className="qr-camera-frame">
+          <video ref={videoRef} muted playsInline />
+          {!result && <span className="qr-target" aria-hidden="true" />}
+        </div>
+        <p className="qr-scanner-status">{status}</p>
+        {result && <div className="qr-result"><strong>掃描內容</strong><code>{result}</code></div>}
+        <div className="qr-scanner-actions">
+          {result && <button type="button" onClick={() => {
+            setResult("");
+            setStatus("請將 QR Code 放入框內");
+            setRestartKey((value) => value + 1);
+          }}>再次掃描</button>}
+          <button type="button" className="secondary" onClick={onClose}>關閉</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function RewardClaimModal({ token, user, onClose, onClaimed }) {
+  const backendUrl =
+    import.meta.env.VITE_API_URL || "https://ar-vision-link.onrender.com";
+  const [reward, setReward] = useState(null);
+  const [message, setMessage] = useState("正在確認獎勵…");
+  const [claiming, setClaiming] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadReward() {
+      try {
+        const response = await fetch(`${backendUrl}/api/rewards/${token}`);
+        const result = await response.json();
+        if (cancelled) return;
+        if (!response.ok || !result.success) throw new Error(result.error || "無法讀取獎勵");
+        setReward(result);
+        setMessage(result.expired ? "這份獎勵已經過期" : "確認後金幣會加入你的帳號");
+      } catch (err) {
+        setMessage(err.message);
+      }
+    }
+    loadReward();
+    return () => { cancelled = true; };
+  }, [backendUrl, token]);
+
+  async function claimReward() {
+    setClaiming(true);
+    try {
+      const response = await fetch(`${backendUrl}/api/rewards/${token}/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user.id }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || "領取失敗");
+      setClaimed(true);
+      setMessage(`已獲得 ${result.coins_awarded} 金幣`);
+      onClaimed(result.coins);
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  return (
+    <div className="reward-claim-backdrop">
+      <section className="reward-claim-dialog" role="dialog" aria-modal="true" aria-labelledby="reward-claim-title">
+        <button className="reward-claim-close" onClick={onClose} aria-label="關閉">×</button>
+        <div className="reward-coin-mark">◉</div>
+        <small>AR VISION LINK REWARD</small>
+        <h2 id="reward-claim-title">{claimed ? "領取成功" : "發現金幣獎勵"}</h2>
+        {reward && <strong className="reward-coin-amount">+{reward.coins}</strong>}
+        <p>{message}</p>
+        {reward && !reward.expired && !claimed && (
+          <button className="reward-confirm-button" onClick={claimReward} disabled={claiming}>
+            {claiming ? "領取中…" : "確定領取"}
+          </button>
+        )}
+        {claimed && <button className="reward-confirm-button" onClick={onClose}>完成</button>}
+      </section>
+    </div>
+  );
+}
+
+function RoomDissolvedNotice({ visible, onClose }) {
+  if (!visible) return null;
+  return (
+    <button type="button" className="room-dissolved-notice-layer" onClick={onClose} aria-label="關閉房間解散通知">
+      <span className="room-dissolved-notice">房主已解散房間</span>
+    </button>
+  );
+}
+
+const landingFeatures = [
+  ["Live AR Game", "多人即時同步、手勢答題競賽"],
+  ["AI Quiz Lab", "可用 AI 將文字、PDF、TXT 轉換成題目"],
+  ["AR Camera", "搭配濾鏡、3D 特效進行自拍"],
+  ["收集式要素", "收集各式各樣的'虛擬替身'造型"],
+];
+
+function LoggedOutLanding() {
+  return (
+    <main className="landing-page">
+      <section className="landing-hero">
+        <div className="landing-grid-bg" aria-hidden="true" />
+        <div className="landing-hero-copy">
+          <h1>讓每一次學習，<em>都有身分與互動。</em></h1>
+          <p>一個身分，連結 AI 出題、多人即時競賽、AR 鏡頭、自拍創作與虛擬替身。讓每一次參與，都能被看見、即時回應，也留下自己的學習足跡。</p>
+          <Link className="landing-pill primary" to="/register">建立你的身分 →</Link>
+        </div>
+        <div className="landing-feature-list" aria-label="AR Vision Link 產品功能">
+          {landingFeatures.map(([title, description]) => (
+            <article className="landing-feature-card" key={title}>
+              <div><h2>{title}</h2><p>{description}</p></div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-section participation-section">
+        <h2 className="landing-heading">不是功能清單，而是一個持續參與的循環。</h2>
+        <p className="landing-intro">從建立身分開始，使用者可以創作、競賽、被辨識，再把每次活動累積成個人紀錄。</p>
+        <div className="participation-steps">
+          <article><span>01</span><h3>建立身分</h3><p>臉部註冊與登入，連結個人資料和虛擬替身。</p></article>
+          <article><span>02</span><h3>創作內容</h3><p>AI 或手動建立題目，管理自己的測驗庫。</p></article>
+          <article><span>03</span><h3>進入互動</h3><p>普通、AR 或自由選擇模式，即時加入房間。</p></article>
+          <article><span>04</span><h3>累積歷程</h3><p>可瀏覽得分、排行、答案和主持紀錄。</p></article>
+        </div>
+      </section>
+
+      <section className="landing-band create-band">
+        <div className="landing-split">
+          <div className="landing-copy"><h2 className="landing-heading">一份教材，幾分鐘變成一場遊戲。</h2><p className="landing-intro">貼上文字或上傳 PDF／TXT，由 AI 建立四選一題目；老師仍保有完整編輯權。</p></div>
+          <div className="quiz-creator-preview" aria-label="AI 建立測驗介面示意">
+            <header><strong>QUIZ CENTER</strong></header>
+            <div className="quiz-preview-body">
+              <aside><span>總覽</span><span>我的測驗</span><span>歷史紀錄</span><span>建立房間</span></aside>
+              <div className="quiz-preview-main">
+                <div className="quiz-file">教材檔案：ComputerScience.pdf</div>
+                <div className="quiz-generating">✦ 正在從教材產生 5 道題目...</div>
+                <div className="quiz-question"><strong>Q1 · 被稱為「電腦的大腦」，負責處理資料與執行指令的核心硬體是下列哪一個？</strong><div><span className="answer-a correct">A. 中央處理器 (CPU)</span><span className="answer-b">B. 固態硬碟 (SSD)</span><span className="answer-c">C. 滑鼠 (Mouse)</span><span className="answer-d">D. 顯示卡 (GPU)</span></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-band play-band">
+        <div className="landing-split">
+          <div className="landing-copy"><h2 className="landing-heading">不只按答案，直接在鏡頭裡作答。</h2><p className="landing-intro">AR 模式透過手部追蹤辨識指向位置，題目、倒數、分數與排行都疊加在真實畫面上；主持端同步看到玩家狀況。</p></div>
+          <div className="ar-game-preview" aria-label="AR 模式房間與手勢答題畫面">
+            <figure className="ar-game-shot ar-game-shot-lobby">
+              <img src={`${import.meta.env.BASE_URL}generated/ar-quiz-lobby.png`} alt="AR 模式遊戲房間畫面" />
+            </figure>
+            <figure className="ar-game-shot ar-game-shot-answer">
+              <img src={`${import.meta.env.BASE_URL}generated/ar-quiz-answer.png`} alt="AR 手勢作答畫面" />
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-section identity-section">
+        <div className="landing-split">
+          <div className="landing-copy"><h2 className="landing-heading">身分不是帳號欄位，而是整個體驗的入口。</h2><p className="landing-intro">從臉部登入到多人 AR Camera，讓公開資訊、虛擬替身與活動成果跟著使用者出現在現場。</p></div>
+          <article className="identity-preview">
+            <h3>一個身分，連結所有歷程</h3>
+            <p>個人資料、虛擬替身、測驗成績與臉部資料維持在同一個使用者身分下。</p>
+            <div className="identity-profile">
+              <div className="identity-person">
+                <div className="identity-user-mark" aria-hidden="true"><span /></div>
+                <h4>李田所</h4>
+                <small>自我介紹</small>
+                <p>嗨 一庫走!</p>
+              </div>
+              <div className="identity-data">
+                <span><small>使用者 ID</small><b>13</b></span>
+                <span><small>建立時間</small><b>2026/06/01</b></span>
+                <span className="identity-action">歷史紀錄</span>
+                <span className="identity-action">重新註冊臉部</span>
+                <strong>編輯資料</strong>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section className="landing-band ar-camera-band">
+        <div className="landing-split">
+          <div className="landing-copy"><h2 className="landing-heading">從鏡頭進入<br />AR世界</h2><p className="landing-intro">AR Camera 結合臉部追蹤、即時辨識與 2D／3D 特效，讓每一次自拍和多人互動都能留下更有趣的畫面。</p></div>
+          <div className="ar-camera-showcase" aria-label="AR Camera 產品介面示意">
+            <figure className="ar-camera-shot ar-camera-shot-entry">
+              <img src={`${import.meta.env.BASE_URL}generated/ar-camera-entry.png`} alt="AR Camera 模式選擇介面" />
+            </figure>
+            <figure className="ar-camera-shot ar-camera-shot-selfie">
+              <img src={`${import.meta.env.BASE_URL}generated/ar-camera-selfie.png`} alt="套用狗狗 AR 特效的自拍介面" />
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-band expression-band">
+        <div className="landing-split">
+          <div className="landing-copy"><h2 className="landing-heading">留下自己的風格。</h2><p className="landing-intro">可為自己的虛擬替身搭配各種服裝，各式各樣的造型等你來收集。</p></div>
+          <div className="expression-showcase" aria-label="虛擬替身換裝與造型展示">
+            <figure className="expression-shot expression-shot-dressup">
+              <img
+                src={`${import.meta.env.BASE_URL}generated/home-avatar-dressup.png`}
+                alt="虛擬替身換裝介面"
+              />
+            </figure>
+            <figure className="expression-shot expression-shot-styles">
+              <img
+                src={`${import.meta.env.BASE_URL}generated/avatar-style-showcase.png`}
+                alt="多套虛擬替身造型展示"
+              />
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-band progress-band">
+        <div className="landing-split progress-split">
+          <div className="landing-copy"><h2 className="landing-heading">每次參與，都成為下一次進步的線索。</h2><p className="landing-intro">玩家能查看分數、答案與場次；主持人能回看排行榜、所有玩家作答紀錄與題目表現。</p></div>
+          <div className="history-preview">
+            <div className="history-tabs"><span>玩家紀錄</span><span>主持紀錄</span></div>
+            {[["#1", "資料結構隨堂小考", "答對 10 / 10 題", "9,990 分"], ["#9", "計算機網路即時測驗", "答對 7 / 10 題", "7,120 分"], ["#2", "os小考", "答對 9 / 12 題", "9,330 分"]].map(([rank, title, detail, score]) => (
+              <div className="history-row" key={title}><span className="history-rank">{rank}</span><div><strong>{title}</strong><small>{detail}</small></div><b>{score}</b></div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="privacy-section">
+        <div><h2>臉部辨識帶來方便，且保護使用者個資。</h2></div>
+        <div className="privacy-list">
+          <article><b>01</b><div><strong>後端進行身分比對</strong><span>前端不取得其他使用者的臉部特徵資料。</span></div></article>
+          <article><b>02</b><div><strong>公開資訊與生物特徵分離</strong><span>鏡頭畫面只呈現允許公開的個人資訊。</span></div></article>
+          <article><b>03</b><div><strong>使用者可以重新註冊</strong><span>提供更新臉部資料的明確入口。</span></div></article>
+        </div>
+      </section>
+
+      <section className="landing-cta"><h2>進入你的<br />AR 互動世界。</h2><p>從建立身分開始，創造第一場即時體驗。</p><Link to="/register">建立帳號 →</Link></section>
+      <footer className="landing-footer">2026 AR Vision Link</footer>
+    </main>
+  );
+}
+
+function Home() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedUser = localStorage.getItem("currentUser");
+    if (!savedUser) return null;
+    try {
+      return JSON.parse(savedUser);
+    } catch {
+      localStorage.removeItem("currentUser");
+      return null;
+    }
+  });
+  const [quickRoomCode, setQuickRoomCode] = useState("");
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [rewardToken, setRewardToken] = useState(() =>
+    currentUser ? new URLSearchParams(location.search).get("reward") || "" : ""
+  );
+  const [showRoomDissolvedNotice, setShowRoomDissolvedNotice] = useState(Boolean(location.state?.roomDissolved));
+
+  useEffect(() => {
+    if (!location.state?.roomDissolved) return;
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    const token = new URLSearchParams(location.search).get("reward");
+    if (!token || !currentUser) return;
+    navigate(location.pathname, { replace: true, state: location.state });
+  }, [currentUser, location.pathname, location.search, location.state, navigate]);
+
+  function updateCoins(coins) {
+    setCurrentUser((user) => {
+      const updated = { ...user, coins };
+      localStorage.setItem("currentUser", JSON.stringify(updated));
+      return updated;
+    });
+  }
+
+  const handleRewardDetected = useCallback((token) => {
+    setShowQrScanner(false);
+    setRewardToken(token);
+  }, []);
+
+  function handleQuickJoin(event) {
+    event.preventDefault();
+    const roomCode = quickRoomCode.trim().toUpperCase();
+    if (roomCode) navigate(`/quiz/join?room=${encodeURIComponent(roomCode)}`);
+  }
+
+  const notice = <RoomDissolvedNotice visible={showRoomDissolvedNotice} onClose={() => setShowRoomDissolvedNotice(false)} />;
+  if (!currentUser) return <>{notice}<LoggedOutLanding /></>;
+
+  return (
+    <div className="home-page logged-in-home">
+      {notice}
+      <section className="home-hero"><div className="hero-left"><h1>AR Vision Link</h1><div className="home-player-hub">
+        <form className="home-quick-join" onSubmit={handleQuickJoin}><label htmlFor="quick-room-code">快速加入房間</label><div className="quick-join-row"><input id="quick-room-code" value={quickRoomCode} onChange={(event) => setQuickRoomCode(event.target.value.toUpperCase())} placeholder="輸入房號" maxLength={12} /><button type="submit" disabled={!quickRoomCode.trim()}>加入</button></div></form>
+        <button type="button" className="home-shop-button" onClick={() => navigate("/store")}><span className="shop-icon-wrap"><ShopIcon /></span><span className="shop-button-copy"><strong>商城</strong><small>探索「虛擬替身」時裝與限定造型</small></span></button>
+        <button type="button" className="home-shop-button home-qr-button" onClick={() => setShowQrScanner(true)}><span className="shop-icon-wrap"><QrIcon /></span><span className="shop-button-copy"><strong>掃描 QR Code</strong><small>開啟相機，掃描活動或獎勵代碼</small></span></button>
+        <button type="button" className="home-shop-button home-avatar-edit-button" onClick={() => navigate("/avatar-dressup")}><span className="shop-icon-wrap"><AvatarEditIcon /></span><span className="shop-button-copy"><strong>編輯「虛擬替身」</strong></span></button>
+      </div></div></section>
+      {showQrScanner && <QRScannerModal onClose={() => setShowQrScanner(false)} onReward={handleRewardDetected} />}
+      {rewardToken && <RewardClaimModal token={rewardToken} user={currentUser} onClose={() => setRewardToken("")} onClaimed={updateCoins} />}
     </div>
   );
 }

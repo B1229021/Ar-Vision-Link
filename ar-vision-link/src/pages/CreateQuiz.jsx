@@ -1,15 +1,25 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import "../styles/CreateQuiz.css";
 
 function CreateQuiz() {
   const navigate = useNavigate();
-
+  const [searchParams] = useSearchParams();
   const BACKEND_URL = "https://ar-vision-link.onrender.com";
 
   const [currentUser, setCurrentUser] = useState(null);
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [aiSourceType, setAiSourceType] = useState("text");
+  const [sourceText, setSourceText] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [questionCount, setQuestionCount] = useState(5);
+  const [difficulty, setDifficulty] = useState("normal");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(
+    searchParams.get("mode") === "ai"
+  );
 
   const [questions, setQuestions] = useState([
     {
@@ -64,6 +74,97 @@ function CreateQuiz() {
     setQuestions(questions.filter((_, i) => i !== index));
   }
 
+  function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setSelectedFile(file);
+
+    if (file.type === "text/plain" || file.name.endsWith(".txt")) {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        setSourceText(reader.result);
+        setAiSourceType("text");
+      };
+
+      reader.readAsText(file, "utf-8");
+      return;
+    }
+
+    if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+      setAiSourceType("pdf");
+      return;
+    }
+
+    alert("目前只支援 TXT 或 PDF");
+    setSelectedFile(null);
+  }
+
+  async function handleGenerateByAI() {
+    setAiGenerating(true);
+
+    try {
+      let response;
+
+      if (aiSourceType === "text") {
+        if (!sourceText.trim()) {
+          alert("請先貼上文字或上傳 TXT 檔案");
+          return;
+        }
+
+        response = await fetch(`${BACKEND_URL}/api/ai/generate-quiz`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: sourceText,
+            question_count: questionCount,
+            difficulty,
+          }),
+        });
+      }
+
+      if (aiSourceType === "pdf") {
+        if (!selectedFile) {
+          alert("請先上傳 PDF 檔案");
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("question_count", questionCount);
+        formData.append("difficulty", difficulty);
+
+        response = await fetch(`${BACKEND_URL}/api/ai/generate-quiz-pdf`, {
+          method: "POST",
+          body: formData,
+        });
+      }
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        alert("AI 產生題目失敗：" + (result.error || "未知錯誤"));
+        return;
+      }
+
+      setQuestions(result.questions);
+
+      if (!title.trim()) {
+        setTitle("AI 產生測驗");
+      }
+
+      alert("AI 題目產生完成，可以再手動修改");
+    } catch (err) {
+      console.error(err);
+      alert("AI 出題時發生錯誤");
+    } finally {
+      setAiGenerating(false);
+    }
+  }
+
   async function handleCreateQuiz() {
     if (!currentUser) return;
 
@@ -104,7 +205,6 @@ function CreateQuiz() {
 
       if (!response.ok || result.error) {
         alert("建立失敗：" + (result.error || "未知錯誤"));
-        setSaving(false);
         return;
       }
 
@@ -113,9 +213,9 @@ function CreateQuiz() {
     } catch (err) {
       console.error(err);
       alert("建立測驗時發生錯誤");
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
   }
 
   return (
@@ -124,7 +224,7 @@ function CreateQuiz() {
         <h2>建立測驗</h2>
 
         <p className="create-quiz-subtitle">
-          建立類似 Kahoot 的題目，之後可以讓玩家加入作答。
+          可手動建立題目，也可以貼上文字或上傳 PDF/TXT 讓 AI 自動出題。
         </p>
 
         <div className="quiz-field">
@@ -134,6 +234,99 @@ function CreateQuiz() {
             onChange={(e) => setTitle(e.target.value)}
             placeholder="例如：植物構造小測驗"
           />
+        </div>
+
+        <div className="ai-wrapper">
+          <button
+            className="ai-toggle-btn"
+            onClick={() => setShowAiPanel(!showAiPanel)}
+          >
+            🤖 AI 自動出題
+            {showAiPanel ? " ▲" : " ▼"}
+          </button>
+
+          {showAiPanel && (
+            <div className="ai-generate-box">
+              <h3>AI 自動出題</h3>
+
+              <div className="ai-options">
+                <div className="quiz-field">
+                  <label>資料來源</label>
+                  <select
+                    value={aiSourceType}
+                    onChange={(e) => setAiSourceType(e.target.value)}
+                  >
+                    <option value="text">貼上文字 / TXT</option>
+                    <option value="pdf">PDF 檔案</option>
+                  </select>
+                </div>
+
+                <div className="quiz-field">
+                  <label>題數</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={questionCount}
+                    onChange={(e) => setQuestionCount(Number(e.target.value))}
+                  />
+                </div>
+
+                <div className="quiz-field">
+                  <label>難度</label>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                  >
+                    <option value="easy">簡單</option>
+                    <option value="normal">普通</option>
+                    <option value="hard">困難</option>
+                  </select>
+                </div>
+
+                <div className="quiz-field">
+                  <label>上傳檔案</label>
+                  <input
+                    type="file"
+                    accept=".txt,.pdf,text/plain,application/pdf"
+                    onChange={handleFileChange}
+                  />
+                </div>
+              </div>
+
+              {aiSourceType === "text" && (
+                <div className="quiz-field">
+                  <label>教材文字</label>
+                  <textarea
+                    value={sourceText}
+                    onChange={(e) => setSourceText(e.target.value)}
+                    placeholder="可以直接貼上教材內容，或上傳 TXT 後自動帶入文字"
+                  />
+                </div>
+              )}
+
+              {aiSourceType === "pdf" && (
+                <div className="upload-box">
+                  {selectedFile ? (
+                    <p>已選擇 PDF：{selectedFile.name}</p>
+                  ) : (
+                    <p>請上傳 PDF 檔案</p>
+                  )}
+                </div>
+              )}
+
+              <div className="button-row">
+                <button
+                  className="create-btn secondary"
+                  onClick={handleGenerateByAI}
+                  disabled={aiGenerating}
+                >
+                  {aiGenerating ? "AI 產生中..." : "用 AI 產生 / 重新產生題目"}
+                </button>
+              </div>
+
+            </div>
+          )}
         </div>
 
         <div className="question-list">
@@ -162,7 +355,7 @@ function CreateQuiz() {
               </div>
 
               <div className="option-grid">
-                <div className="quiz-field">
+                <div className="quiz-field quiz-option-field option-a">
                   <label>選項 A</label>
                   <input
                     value={q.option_a}
@@ -173,7 +366,7 @@ function CreateQuiz() {
                   />
                 </div>
 
-                <div className="quiz-field">
+                <div className="quiz-field quiz-option-field option-b">
                   <label>選項 B</label>
                   <input
                     value={q.option_b}
@@ -184,7 +377,7 @@ function CreateQuiz() {
                   />
                 </div>
 
-                <div className="quiz-field">
+                <div className="quiz-field quiz-option-field option-c">
                   <label>選項 C</label>
                   <input
                     value={q.option_c}
@@ -195,7 +388,7 @@ function CreateQuiz() {
                   />
                 </div>
 
-                <div className="quiz-field">
+                <div className="quiz-field quiz-option-field option-d">
                   <label>選項 D</label>
                   <input
                     value={q.option_d}
@@ -244,21 +437,23 @@ function CreateQuiz() {
           ))}
         </div>
 
-        <button className="create-btn secondary" onClick={addQuestion}>
-          新增題目
-        </button>
+        <div className="button-row">
+          <button className="create-btn secondary" onClick={addQuestion}>
+            新增題目
+          </button>
 
-        <button
-          className="create-btn primary"
-          onClick={handleCreateQuiz}
-          disabled={saving}
-        >
-          {saving ? "建立中..." : "建立測驗"}
-        </button>
+          <button
+            className="create-btn primary"
+            onClick={handleCreateQuiz}
+            disabled={saving}
+          >
+            {saving ? "建立中..." : "建立測驗"}
+          </button>
 
-        <button className="create-btn ghost" onClick={() => navigate("/quiz")}>
-          返回 Quiz Center
-        </button>
+          <button className="create-btn ghost quiz-center-return" onClick={() => navigate("/quiz")}>
+            返回 Quiz Center
+          </button>
+        </div>
       </div>
     </div>
   );

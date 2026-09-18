@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import ProfileImage from "../components/ProfileImage";
 import "../styles/Leaderboard.css";
 
 function Leaderboard() {
@@ -109,16 +110,11 @@ function Leaderboard() {
                   </div>
 
                   <div className="leader-avatar">
-                    {user?.avatar_url ? (
-                      <img src={user.avatar_url} alt="avatar" />
-                    ) : (
-                      user?.name?.charAt(0) || "U"
-                    )}
+                    <ProfileImage user={user} className="leader-avatar-head" />
                   </div>
 
                   <div className="leader-info">
                     <strong>{user?.name || "未知玩家"}</strong>
-                    <span>@{user?.nickname || "unknown"}</span>
                   </div>
 
                   <div className="leader-score">
@@ -131,7 +127,7 @@ function Leaderboard() {
         )}
 
         <button
-          className="leaderboard-btn secondary"
+          className="leaderboard-btn secondary quiz-center-return"
           onClick={() => navigate("/quiz")}
         >
           返回 Quiz Center

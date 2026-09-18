@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as faceapi from "@vladmandic/face-api";
+import { useNavigate } from "react-router-dom";
+import { createPersistentProfileImage } from "../utils/profileImage";
 import "../styles/Register.css";
 
 const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
@@ -63,12 +65,11 @@ async function loadCommonFaceApiModels() {
 
 
 function Register() {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
 
   const [name, setName] = useState("");
-  const [nickname, setNickname] = useState("");
   const [description, setDescription] = useState("");
-  const [extraInfo, setExtraInfo] = useState("");
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -154,7 +155,7 @@ function Register() {
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, 640, 480);
 
-    const imageData = canvas.toDataURL("image/png");
+    const imageData = canvas.toDataURL("image/jpeg", 0.85);
 
     setCapturedImage(imageData);
     setMode("captured");
@@ -162,16 +163,22 @@ function Register() {
     stopCamera();
   }
 
-  function handleUploadPhoto(e) {
+  async function handleUploadPhoto(e) {
     const file = e.target.files[0];
     if (!file) return;
 
     stopCamera();
 
-    const imageUrl = URL.createObjectURL(file);
-
-    setCapturedImage(imageUrl);
-    setMode("captured");
+    try {
+      const imageData = await createPersistentProfileImage(file);
+      setCapturedImage(imageData);
+      setMode("captured");
+    } catch (err) {
+      console.error(err);
+      alert(err.message || "讀取照片失敗");
+      setCapturedImage(null);
+      setMode("idle");
+    }
   }
 
   function handleCameraButton() {
@@ -239,12 +246,10 @@ function Register() {
         },
         body: JSON.stringify({
           name: name.trim(),
-          nickname: nickname.trim(),
           description: description.trim(),
-          extra_info: extraInfo.trim(),
           is_active: true,
           face_embedding: embedding,
-          avatar_url: capturedImage,
+          profile_url: capturedImage,
         }),
       });
 
@@ -268,9 +273,7 @@ function Register() {
       stopCamera();
 
       setName("");
-      setNickname("");
       setDescription("");
-      setExtraInfo("");
       setCapturedImage(null);
       setMode("idle");
       setStep(1);
@@ -312,29 +315,11 @@ function Register() {
             </div>
 
             <div className="field">
-              <label>暱稱（可選）</label>
-              <input
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                placeholder="例如：Simon"
-              />
-            </div>
-
-            <div className="field">
               <label>自我介紹（可選）</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="簡短介紹自己"
-              />
-            </div>
-
-            <div className="field">
-              <label>額外資訊（可選）</label>
-              <textarea
-                value={extraInfo}
-                onChange={(e) => setExtraInfo(e.target.value)}
-                placeholder="例如：IG / 備註"
               />
             </div>
 
@@ -407,6 +392,10 @@ function Register() {
             </button>
           </>
         )}
+
+        <button className="btn btn-home" onClick={() => navigate("/")}>
+          回首頁
+        </button>
       </div>
     </div>
   );

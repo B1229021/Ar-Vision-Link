@@ -3,34 +3,19 @@ import { useNavigate, useParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import "../styles/QuizGame.css";
 
-const ICE_CONFIG = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    {
-      urls: "turn:free.expressturn.com:3478",
-      username: "000000002095434030",
-      credential: "z745b0PqGo97PlA32T48lqiXqI0=",
-    },
-    {
-      urls: "turns:free.expressturn.com:5349",
-      username: "000000002095434030",
-      credential: "z745b0PqGo97PlA32T48lqiXqI0=",
-    },
-  ],
-};
+const BACKEND_URL =
+    import.meta.env.VITE_API_URL || "https://ar-vision-link.onrender.com";
 
 function QuizGame() {
   const navigate = useNavigate();
   const { sessionId } = useParams();
-
-  const BACKEND_URL =
-    import.meta.env.VITE_API_URL || "https://ar-vision-link.onrender.com";
 
   const socketRef = useRef(null);
   const videoRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef({});
   const questionsRef = useRef([]);
+  const iceConfigRef = useRef(null);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [session, setSession] = useState(null);
@@ -70,6 +55,36 @@ function QuizGame() {
     socketRef.current?.disconnect();
     socketRef.current = null;
   }
+
+  useEffect(() => {
+    async function loadIceConfig() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/ice-config`);
+
+        if (!res.ok) {
+          throw new Error(
+            `ICE Config API Error: ${res.status}`
+          );
+        }
+
+        const config = await res.json();
+
+        if (!config?.iceServers) {
+          throw new Error("ICE_CONFIG 格式錯誤");
+        }
+
+        iceConfigRef.current = config;
+      } catch (err) {
+        console.error("ICE_CONFIG 載入失敗:", err);
+
+        alert(
+          "無法取得 ICE Server 設定，請確認後端 /api/ice-config 是否正常"
+        );
+      }
+    }
+
+    loadIceConfig();
+  }, []);
 
   useEffect(() => {
     questionsRef.current = questions;
@@ -233,8 +248,7 @@ function QuizGame() {
           user: {
             id: currentUser.id,
             name: currentUser.name,
-            nickname: currentUser.nickname,
-            avatar_url: currentUser.avatar_url,
+            profile_url: currentUser.profile_url,
           },
         });
       } catch (err) {
@@ -253,17 +267,19 @@ function QuizGame() {
   }, [loading, currentUser, sessionId]);
 
   useEffect(() => {
-    if (loading || !session || session.game_finished || answered) return;
+    if (loading || !session || session.game_finished) return;
 
     if (timeLeft <= 0) {
-      setAnswered(true);
-      setSelectedAnswer("");
-      setAnswerResult({
-        user_id: currentUser?.id,
-        is_correct: false,
-        score_earned: 0,
-        total_score: score,
-      });
+      if (!answered) {
+        setAnswered(true);
+        setSelectedAnswer("");
+        setAnswerResult({
+          user_id: currentUser?.id,
+          is_correct: false,
+          score_earned: 0,
+          total_score: score,
+        });
+      }
       return;
     }
 
@@ -279,7 +295,13 @@ function QuizGame() {
 
     closePeerConnection(hostSocketId);
 
-    const pc = new RTCPeerConnection(ICE_CONFIG);
+    if (!iceConfigRef.current) {
+      throw new Error("ICE_CONFIG 尚未載入完成");
+    }
+
+    const pc = new RTCPeerConnection(
+      iceConfigRef.current
+    );
 
     peerConnectionsRef.current[hostSocketId] = pc;
 
@@ -376,17 +398,21 @@ function QuizGame() {
   }
 
   function getOptionClass(optionKey) {
-    if (!answered) return "option-btn";
+    const baseClass = `option-btn option-${optionKey.toLowerCase()}`;
+
+    if (!answered) return baseClass;
+
+    if (timeLeft > 0) {
+      return optionKey === selectedAnswer
+        ? `${baseClass} selected`
+        : baseClass;
+    }
 
     if (optionKey === currentQuestion.correct_answer) {
-      return "option-btn correct";
+      return `${baseClass} correct`;
     }
 
-    if (optionKey === selectedAnswer) {
-      return "option-btn wrong";
-    }
-
-    return "option-btn disabled";
+    return `${baseClass} disabled`;
   }
 
   function leaveGame() {
@@ -454,7 +480,7 @@ function QuizGame() {
           {cameraError && <div className="camera-error">{cameraError}</div>}
 
           <div className="ar-status-box">
-            <strong>{currentUser?.nickname || currentUser?.name}</strong>
+            <strong>{currentUser?.name}</strong>
             <span>Score: {score}</span>
 
             {answerResult && (
@@ -486,11 +512,20 @@ function QuizGame() {
             >
               <span className="option-key">{key}</span>
               <span>{options[key]}</span>
+              {timeLeft <= 0 && key === currentQuestion.correct_answer && (
+                <span className="option-correct-check" aria-label="正確答案">
+                  ✓
+                </span>
+              )}
             </button>
           ))}
         </div>
 
-        {answered && (
+        {answered && timeLeft > 0 && (
+          <div className="answer-result">答案已送出，倒數結束後公布正解</div>
+        )}
+
+        {timeLeft <= 0 && (
           <div className="answer-result">
             {selectedAnswer === currentQuestion.correct_answer
               ? "答對了！"

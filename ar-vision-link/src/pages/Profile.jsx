@@ -1,25 +1,29 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import AvatarRenderer from "../components/AvatarRenderer";
+import ProfileImage from "../components/ProfileImage";
 import "../styles/Profile.css";
+
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem("currentUser") || "null");
+  } catch {
+    return null;
+  }
+}
 
 function Profile() {
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser] = useState(getStoredUser);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("currentUser");
-
-    if (!savedUser) {
+    if (!currentUser) {
       navigate("/face-login");
-      return;
     }
-
-    setCurrentUser(JSON.parse(savedUser));
-  }, [navigate]);
+  }, [currentUser, navigate]);
 
   function logout() {
     localStorage.removeItem("currentUser");
-    setCurrentUser(null);
     navigate("/");
   }
 
@@ -43,7 +47,7 @@ function Profile() {
     return (
       <div className="profile-page">
         <div className="profile-card">
-          <p>載入個人資料中...</p>
+          <p>載入中...</p>
         </div>
       </div>
     );
@@ -52,43 +56,32 @@ function Profile() {
   return (
     <div className="profile-page">
       <div className="profile-card">
-        <div className="avatar-circle">
-          {currentUser.avatar_url ? (
-            <img
-              src={currentUser.avatar_url}
-              alt="avatar"
-              className="profile-avatar-img"
+        <div className="profile-hero">
+          <div className="profile-identity">
+            <ProfileImage user={currentUser} className="avatar-circle" />
+
+            <h2 className="profile-name">{currentUser.name || "未命名使用者"}</h2>
+          </div>
+
+          <div className="profile-avatar-stage">
+            <AvatarRenderer
+              config={currentUser.avatar_config}
+              className="profile-avatar-renderer"
             />
-          ) : (
-            currentUser.name?.charAt(0) || "U"
-          )}
+          </div>
         </div>
 
-        <h2>{currentUser.name || "未命名使用者"}</h2>
-
-        <p className="profile-nickname">
-          @{currentUser.nickname || "unknown"}
-        </p>
-
-        <div className="profile-section">
-          <h3>自我介紹</h3>
-          <p>{currentUser.description || "尚無介紹"}</p>
-        </div>
-
-        <div className="profile-section">
-          <h3>額外資訊</h3>
-          <p>{currentUser.extra_info || "無額外資訊"}</p>
-        </div>
+        <section className="profile-bio-section">
+          <div className="profile-section-heading">
+            <h3>自我介紹</h3>
+          </div>
+          <p>{currentUser.description?.trim() || ""}</p>
+        </section>
 
         <div className="profile-info-list">
           <div className="info-row">
-            <span>ID</span>
+            <span>使用者 ID</span>
             <strong>{currentUser.id}</strong>
-          </div>
-
-          <div className="info-row">
-            <span>帳號狀態</span>
-            <strong>{currentUser.is_active === false ? "停用" : "啟用"}</strong>
           </div>
 
           <div className="info-row">
@@ -102,20 +95,35 @@ function Profile() {
           </div>
         </div>
 
-        <button className="profile-btn primary" onClick={() => navigate("/edit-profile")}>
-          編輯個人資料
-        </button>
+        <div className="profile-action-grid">
+          <button
+            className="profile-btn secondary"
+            onClick={() => navigate("/quiz/history")}
+          >
+            歷史紀錄
+          </button>
 
-        <button className="profile-btn secondary" onClick={() => navigate("/re-register-face")}>
-          重新註冊臉部
-        </button>
+          <button
+            className="profile-btn secondary"
+            onClick={() => navigate("/re-register-face")}
+          >
+            重新註冊臉部
+          </button>
 
-        <button className="profile-btn primary" onClick={() => navigate("/camera")}>
-          進入 AR Camera
-        </button>
+          <button
+            className="profile-btn secondary"
+            onClick={() => navigate("/avatar-dressup")}
+          >
+            編輯 虛擬替身
+          </button>
 
-        <button className="profile-btn secondary" onClick={() => navigate("/")}>
-          回首頁
+        </div>
+
+        <button
+          className="profile-btn primary"
+          onClick={() => navigate("/edit-profile")}
+        >
+          編輯資料
         </button>
 
         <button className="profile-btn danger" onClick={logout}>

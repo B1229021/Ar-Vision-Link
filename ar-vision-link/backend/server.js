@@ -1,8 +1,12 @@
+import 'dotenv/config';
 import express from "express";
 import cors from "cors";
 import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
+import { GoogleGenAI } from "@google/genai";
+import multer from "multer";
+import { registerAdminRoutes } from "./admin-server.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -26,25 +30,108 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+registerAdminRoutes(app, supabase);
+
 const io = new Server(server, {
   cors: {
     origin: CLIENT_URL === "*" ? "*" : CLIENT_URL,
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
+  // Faster stale-connection detection keeps closed tabs from lingering in a lobby.
+  pingInterval: 5000,
+  pingTimeout: 10000,
 });
 
-const USER_SELECT = `
+const gemini = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 20 * 1024 * 1024,
+  },
+});
+
+const USER_PUBLIC_SELECT = `
   id,
   name,
-  nickname,
   description,
-  extra_info,
-  avatar_url,
+  profile_url,
+  avatar_config,
+  is_active,
+  created_at,
+  updated_at
+`;
+
+const USER_PRIVATE_SELECT = `
+  id,
+  name,
+  description,
+  profile_url,
+  avatar_config,
   is_active,
   created_at,
   updated_at,
+  face_embedding,
+  coins,
+  owned_outfits,
+  admin
+`;
+
+const USER_LOGIN_SELECT = `
+  id,
+  name,
+  description,
+  profile_url,
+  avatar_config,
+  is_active,
+  created_at,
+  updated_at,
+  coins,
+  owned_outfits,
+  admin
+`;
+
+const USER_FACE_MATCH_SELECT = `
+  id,
   face_embedding
 `;
+
+const FACE_DESCRIPTOR_LENGTH = 128;
+
+// 臉部登入門檻
+const FACE_LOGIN_THRESHOLD = 0.5;
+
+// AR Camera 批次辨識門檻
+const FACE_RECOGNITION_THRESHOLD = 0.45;
+
+// 第一名與第二名至少要相差多少
+const FACE_MIN_DISTANCE_GAP = 0.05;
+
+// 避免一次傳入過多資料
+const MAX_BATCH_FACE_COUNT = 20;
+
+const AVATAR_ITEMS = {
+  hair: Array.from({ length: 16 }, (_, index) => `hair-${index + 1}`),
+  face: Array.from({ length: 12 }, (_, index) => `face-${index + 1}`),
+  top: Array.from({ length: 16 }, (_, index) => `top-${index + 1}`),
+  bottoms: Array.from({ length: 8 }, (_, index) => `bottoms-${index + 1}`),
+};
+
+const DEFAULT_AVATAR_CONFIG = {
+  hair: "hair-1",
+  face: "face-1",
+  top: "top-1",
+  bottoms: "bottoms-1",
+};
+
+const STORE_OUTFIT_IDS = new Set(
+  Array.from(
+    { length: 9 },
+    (_, index) => `outfit-${String(index + 1).padStart(2, "0")}`
+  )
+);
 
 const QUIZ_SELECT = `
   quiz_id,
@@ -70,7 +157,8 @@ const GAME_SESSION_SELECT = `
   started_at,
   ended_at,
   current_question,
-  game_finished
+  game_finished,
+  game_mode
 `;
 
 const PLAYER_RECORD_SELECT = `
@@ -138,6 +226,14 @@ async function getSessionFullData(sessionId) {
 
   if (quizError) throw new Error(quizError.message);
 
+  const { data: host, error: hostError } = await supabase
+    .from("users")
+    .select(USER_PUBLIC_SELECT)
+    .eq("id", quiz.host_id)
+    .maybeSingle();
+
+  if (hostError) throw new Error(hostError.message);
+
   const { data: questions, error: questionsError } = await supabase
     .from("questions")
     .select(QUESTION_SELECT)
@@ -149,6 +245,7 @@ async function getSessionFullData(sessionId) {
   return {
     session,
     quiz,
+    host: host || null,
     questions: questions || [],
   };
 }
@@ -165,8 +262,9 @@ async function getLeaderboard(sessionId) {
       users (
         id,
         name,
-        nickname,
-        avatar_url
+        description,
+        profile_url,
+        avatar_config
       )
     `)
     .eq("session_id", sessionId)
@@ -177,6 +275,99 @@ async function getLeaderboard(sessionId) {
   return data || [];
 }
 
+const lobbyPlayerSockets = new Map();
+const pendingLobbyCleanup = new Map();
+const LOBBY_RECONNECT_GRACE_MS = 3000;
+
+function getLobbyPlayerKey(sessionId, userId) {
+  return `${Number(sessionId)}:${Number(userId)}`;
+}
+
+function trackLobbyPlayerSocket(socket) {
+  if (socket.data.role !== "player" || !socket.data.sessionId || !socket.data.userId) {
+    return;
+  }
+
+  const key = getLobbyPlayerKey(socket.data.sessionId, socket.data.userId);
+  const socketIds = lobbyPlayerSockets.get(key) || new Set();
+  socketIds.add(socket.id);
+  lobbyPlayerSockets.set(key, socketIds);
+
+  const pendingCleanup = pendingLobbyCleanup.get(key);
+  if (pendingCleanup) {
+    clearTimeout(pendingCleanup);
+    pendingLobbyCleanup.delete(key);
+  }
+}
+
+function untrackLobbyPlayerSocket(socket) {
+  if (socket.data.role !== "player" || !socket.data.sessionId || !socket.data.userId) {
+    return null;
+  }
+
+  const key = getLobbyPlayerKey(socket.data.sessionId, socket.data.userId);
+  const socketIds = lobbyPlayerSockets.get(key);
+
+  if (socketIds) {
+    socketIds.delete(socket.id);
+    if (socketIds.size > 0) return null;
+  }
+
+  lobbyPlayerSockets.delete(key);
+  return key;
+}
+
+async function removeLobbyPlayer(sessionId, userId) {
+  const normalizedSessionId = Number(sessionId);
+  const normalizedUserId = Number(userId);
+  const key = getLobbyPlayerKey(normalizedSessionId, normalizedUserId);
+
+  if (lobbyPlayerSockets.get(key)?.size) return;
+
+  const { data: session, error: sessionError } = await supabase
+    .from("game_sessions")
+    .select("session_id, started_at, game_finished")
+    .eq("session_id", normalizedSessionId)
+    .maybeSingle();
+
+  if (sessionError) throw new Error(sessionError.message);
+  if (!session || session.started_at || session.game_finished) return;
+
+  const { error: deleteError } = await supabase
+    .from("player_records")
+    .delete()
+    .eq("session_id", normalizedSessionId)
+    .eq("user_id", normalizedUserId);
+
+  if (deleteError) throw new Error(deleteError.message);
+
+  const leaderboard = await getLeaderboard(normalizedSessionId);
+  io.to(`session:${normalizedSessionId}`).emit("player-left", {
+    userId: normalizedUserId,
+  });
+  io.to(`session:${normalizedSessionId}`).emit("leaderboard-updated", {
+    leaderboard,
+  });
+}
+
+function scheduleLobbyPlayerCleanup(socket) {
+  const key = untrackLobbyPlayerSocket(socket);
+  if (!key) return;
+
+  const { sessionId, userId } = socket.data;
+  const cleanupTimer = setTimeout(async () => {
+    pendingLobbyCleanup.delete(key);
+
+    try {
+      await removeLobbyPlayer(sessionId, userId);
+    } catch (err) {
+      console.error("Failed to remove disconnected lobby player:", err);
+    }
+  }, LOBBY_RECONNECT_GRACE_MS);
+
+  pendingLobbyCleanup.set(key, cleanupTimer);
+}
+
 function calculateScore(isCorrect, timeLeft = 0) {
   if (!isCorrect) return 0;
 
@@ -184,6 +375,239 @@ function calculateScore(isCorrect, timeLeft = 0) {
   const bonus = Math.max(Number(timeLeft) || 0, 0) * 10;
 
   return baseScore + bonus;
+}
+
+function pickRandomItem(category) {
+  const options = AVATAR_ITEMS[category] || [];
+  return options[Math.floor(Math.random() * options.length)];
+}
+
+function createRandomAvatarConfig() {
+  return {
+    hair: pickRandomItem("hair"),
+    face: pickRandomItem("face"),
+    top: pickRandomItem("top"),
+    bottoms: pickRandomItem("bottoms"),
+  };
+}
+
+function normalizeAvatarConfig(config) {
+  const normalized = { ...DEFAULT_AVATAR_CONFIG };
+
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    return normalized;
+  }
+
+  for (const category of Object.keys(AVATAR_ITEMS)) {
+    const itemId = config[category];
+    const storeMatch =
+      typeof itemId === "string" &&
+      itemId.match(new RegExp(`^store-(outfit-\\d{2})-${category}$`));
+    const isStoreItem = storeMatch && STORE_OUTFIT_IDS.has(storeMatch[1]);
+
+    if (AVATAR_ITEMS[category].includes(itemId) || isStoreItem) {
+      normalized[category] = itemId;
+    }
+  }
+
+  return normalized;
+}
+
+function getStoreOutfitId(itemId, category) {
+  if (typeof itemId !== "string") return null;
+
+  const match = itemId.match(
+    new RegExp(`^store-(outfit-\\d{2})-${category}$`)
+  );
+  return match && STORE_OUTFIT_IDS.has(match[1]) ? match[1] : null;
+}
+
+function requireAvatarAdmin(req, res) {
+  const expectedKey = process.env.AVATAR_ADMIN_KEY;
+  const providedKey = req.headers["x-avatar-admin-key"];
+
+  if (!expectedKey) {
+    res.status(500).json({
+      success: false,
+      error: "後端尚未設定 AVATAR_ADMIN_KEY",
+    });
+    return false;
+  }
+
+  if (!providedKey || providedKey !== expectedKey) {
+    res.status(403).json({
+      success: false,
+      error: "沒有素材設定權限",
+    });
+    return false;
+  }
+
+  return true;
+}
+
+function normalizeFaceDescriptor(value) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== FACE_DESCRIPTOR_LENGTH
+  ) {
+    return null;
+  }
+
+  const descriptor = value.map(Number);
+
+  if (!descriptor.every(Number.isFinite)) {
+    return null;
+  }
+
+  const squaredLength = descriptor.reduce(
+    (sum, item) => sum + item * item,
+    0
+  );
+
+  const vectorLength = Math.sqrt(squaredLength);
+
+  if (!Number.isFinite(vectorLength) || vectorLength === 0) {
+    return null;
+  }
+
+  return descriptor.map((item) => item / vectorLength);
+}
+
+function findBestFaceMatch(descriptor, users) {
+  let bestUser = null;
+  let bestDistance = Infinity;
+  let secondBestDistance = Infinity;
+
+  for (const user of users || []) {
+    const storedDescriptor = user.face_embedding;
+
+    if (
+      !Array.isArray(storedDescriptor) ||
+      storedDescriptor.length !== FACE_DESCRIPTOR_LENGTH
+    ) {
+      continue;
+    }
+
+    let sum = 0;
+
+    for (let i = 0; i < FACE_DESCRIPTOR_LENGTH; i += 1) {
+      const difference =
+        descriptor[i] - storedDescriptor[i];
+
+      sum += difference * difference;
+    }
+
+    const distance = Math.sqrt(sum);
+
+    if (distance < bestDistance) {
+      secondBestDistance = bestDistance;
+      bestDistance = distance;
+      bestUser = user;
+    } else if (distance < secondBestDistance) {
+      secondBestDistance = distance;
+    }
+  }
+
+  return {
+    user: bestUser,
+    distance: bestDistance,
+    secondDistance: secondBestDistance,
+  };
+}
+
+function faceMatchIsAmbiguous(distance, secondDistance) {
+  return (
+    Number.isFinite(distance) &&
+    Number.isFinite(secondDistance) &&
+    secondDistance - distance < FACE_MIN_DISTANCE_GAP
+  );
+}
+
+let userEmbeddingCache = null;
+let userEmbeddingCacheTime = 0;
+
+const USER_EMBEDDING_CACHE_TTL = 30 * 1000;
+
+async function getActiveUsersWithEmbeddings() {
+  const now = Date.now();
+
+  if (
+    userEmbeddingCache &&
+    now - userEmbeddingCacheTime < USER_EMBEDDING_CACHE_TTL
+  ) {
+    return userEmbeddingCache;
+  }
+
+  // 只下載比對需要的 id 與 embedding。
+  // 不再一次下載所有使用者的 Base64 頭像。
+  const { data, error } = await supabase
+    .from("users")
+    .select(USER_FACE_MATCH_SELECT)
+    .eq("is_active", true);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  userEmbeddingCache = (data || [])
+    .map((user) => ({
+      id: user.id,
+      face_embedding: normalizeFaceDescriptor(
+        user.face_embedding
+      ),
+    }))
+    .filter((user) => user.face_embedding !== null);
+
+  userEmbeddingCacheTime = now;
+
+  return userEmbeddingCache;
+}
+
+function clearUserEmbeddingCache() {
+  userEmbeddingCache = null;
+  userEmbeddingCacheTime = 0;
+}
+
+function cleanQuestion(q) {
+  return {
+    question_text: String(q.question_text || "").trim(),
+    option_a: String(q.option_a || "").trim(),
+    option_b: String(q.option_b || "").trim(),
+    option_c: String(q.option_c || "").trim(),
+    option_d: String(q.option_d || "").trim(),
+    correct_answer: ["A", "B", "C", "D"].includes(q.correct_answer)
+      ? q.correct_answer
+      : "A",
+    time_limit: Number(q.time_limit) || 20,
+  };
+}
+
+function validateQuestions(questions, expectedCount = 5) {
+  if (!Array.isArray(questions)) {
+    throw new Error("AI 回傳不是題目陣列");
+  }
+
+  const cleaned = questions.map(cleanQuestion);
+
+  const validQuestions = cleaned.filter((q) => {
+    if (!q.question_text) return false;
+    if (!q.option_a || !q.option_b || !q.option_c || !q.option_d) return false;
+
+    const options = [q.option_a, q.option_b, q.option_c, q.option_d];
+    const uniqueOptions = new Set(options);
+
+    if (uniqueOptions.size < 4) return false;
+
+    if (!["A", "B", "C", "D"].includes(q.correct_answer)) return false;
+
+    return true;
+  });
+
+  if (validQuestions.length === 0) {
+    throw new Error("AI 產生的題目全部不合格，請重新產生");
+  }
+
+  return validQuestions.slice(0, Number(expectedCount) || 5);
 }
 
 app.get("/", (req, res) => {
@@ -198,7 +622,7 @@ app.get("/api/users", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("users")
-      .select(USER_SELECT)
+      .select(USER_PUBLIC_SELECT)
       .eq("is_active", true)
       .order("id", { ascending: true });
 
@@ -216,11 +640,10 @@ app.post("/api/users/register", async (req, res) => {
   try {
     const {
       name,
-      nickname,
       description,
-      extra_info,
-      avatar_url,
+      profile_url,
       face_embedding,
+      avatar_config,
     } = req.body;
 
     if (!name?.trim()) {
@@ -230,38 +653,67 @@ app.post("/api/users/register", async (req, res) => {
       });
     }
 
-    if (!Array.isArray(face_embedding) || face_embedding.length === 0) {
+    const cleanEmbedding =
+      normalizeFaceDescriptor(face_embedding);
+
+    if (!cleanEmbedding) {
       return res.status(400).json({
         success: false,
-        error: "face_embedding 必須是數字陣列",
+        error:
+          "face_embedding 必須是包含 128 個有效數字的陣列",
       });
     }
 
-    const cleanEmbedding = face_embedding.map(Number);
+    if (
+      typeof profile_url !== "string" ||
+      !profile_url.startsWith("data:image/")
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "註冊頭像必須是有效且可持久保存的圖片",
+      });
+    }
 
     const { data, error } = await supabase
       .from("users")
       .insert([
         {
           name: name.trim(),
-          nickname: nickname?.trim() || "",
-          description: description?.trim() || "",
-          extra_info: extra_info?.trim() || "",
-          avatar_url: avatar_url || "",
+          description:
+            description?.trim() || "",
+          profile_url,
+          avatar_config: normalizeAvatarConfig(
+            avatar_config ||
+              createRandomAvatarConfig()
+          ),
           is_active: true,
           face_embedding: cleanEmbedding,
         },
       ])
-      .select(USER_SELECT)
+      .select(USER_PUBLIC_SELECT)
       .single();
 
     if (error) {
-      return res.status(500).json({ success: false, error: error.message });
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
 
-    res.json({ success: true, user: data });
+    clearUserEmbeddingCache();
+
+    return res.json({
+      success: true,
+      user: data,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error("users/register error:", err);
+
+    return res.status(500).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
 
@@ -271,12 +723,9 @@ app.put("/api/users/:id", async (req, res) => {
 
     const {
       name,
-      nickname,
       description,
-      extra_info,
-      avatar_url,
+      profile_url,
       is_active,
-      face_embedding,
     } = req.body;
 
     const updateData = {
@@ -284,23 +733,24 @@ app.put("/api/users/:id", async (req, res) => {
     };
 
     if (name !== undefined) updateData.name = name;
-    if (nickname !== undefined) updateData.nickname = nickname;
     if (description !== undefined) updateData.description = description;
-    if (extra_info !== undefined) updateData.extra_info = extra_info;
-    if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
-    if (is_active !== undefined) updateData.is_active = is_active;
+    if (profile_url !== undefined) {
+      if (typeof profile_url !== "string" || !profile_url.startsWith("data:image/")) {
+        return res.status(400).json({
+          success: false,
+          error: "個人頭像必須是有效的圖片",
+        });
+      }
 
-    if (face_embedding !== undefined) {
-      updateData.face_embedding = Array.isArray(face_embedding)
-        ? face_embedding.map(Number)
-        : face_embedding;
+      updateData.profile_url = profile_url;
     }
+    if (is_active !== undefined) updateData.is_active = is_active;
 
     const { data, error } = await supabase
       .from("users")
       .update(updateData)
       .eq("id", id)
-      .select(USER_SELECT)
+      .select(USER_PUBLIC_SELECT)
       .single();
 
     if (error) {
@@ -324,11 +774,18 @@ app.delete("/api/users/:id", async (req, res) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .select(USER_SELECT)
+      .select(USER_PUBLIC_SELECT)
       .single();
 
     if (error) {
-      return res.status(500).json({ success: false, error: error.message });
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    if (is_active !== undefined) {
+      clearUserEmbeddingCache();
     }
 
     res.json({ success: true, user: data });
@@ -336,6 +793,722 @@ app.delete("/api/users/:id", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+app.post("/api/face-login", async (req, res) => {
+  try {
+    const cleanDescriptor = normalizeFaceDescriptor(
+      req.body.descriptor
+    );
+
+    if (!cleanDescriptor) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "descriptor 必須是包含 128 個有效數字的陣列",
+      });
+    }
+
+    const users =
+      await getActiveUsersWithEmbeddings();
+
+    const match = findBestFaceMatch(
+      cleanDescriptor,
+      users
+    );
+
+    const isAmbiguous = faceMatchIsAmbiguous(
+      match.distance,
+      match.secondDistance
+    );
+
+    if (
+      !match.user ||
+      match.distance > FACE_LOGIN_THRESHOLD ||
+      isAmbiguous
+    ) {
+      return res.json({
+        success: false,
+        error: isAmbiguous
+          ? "辨識結果不夠明確，請正對鏡頭後重試"
+          : "找不到符合的人臉",
+      });
+    }
+
+    // 配對成功後，只查詢該名使用者的完整資料。
+    const {
+      data: loginUser,
+      error: loginUserError,
+    } = await supabase
+      .from("users")
+      .select(USER_LOGIN_SELECT)
+      .eq("id", match.user.id)
+      .eq("is_active", true)
+      .single();
+
+    if (loginUserError || !loginUser) {
+      throw new Error(
+        loginUserError?.message ||
+          "無法取得登入使用者資料"
+      );
+    }
+
+    // 不要將 embedding 印進 Render Log。
+    console.log("臉部登入成功:", {
+      userId: loginUser.id,
+      distance: match.distance,
+    });
+
+    return res.json({
+      success: true,
+      distance: match.distance,
+      user: loginUser,
+    });
+  } catch (err) {
+    console.error("face-login error:", err);
+
+    return res.status(500).json({
+      success: false,
+      error: "臉部登入服務發生錯誤",
+    });
+  }
+});
+
+app.put("/api/users/:id/face", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { face_embedding, profile_url } = req.body;
+
+    if (!Array.isArray(face_embedding)) {
+      return res.status(400).json({
+        success: false,
+        error: "face_embedding 必須是陣列",
+      });
+    }
+
+    const { data: existingUser, error: existingUserError } = await supabase
+      .from("users")
+      .select("profile_url")
+      .eq("id", id)
+      .single();
+
+    if (existingUserError) {
+      return res.status(500).json({
+        success: false,
+        error: existingUserError.message,
+      });
+    }
+
+    const updateData = {
+      face_embedding: face_embedding.map(Number),
+      updated_at: new Date().toISOString(),
+    };
+    const existingProfileUrl = existingUser?.profile_url || "";
+    const mayRepairProfileImage =
+      !existingProfileUrl || existingProfileUrl.startsWith("blob:");
+
+    if (
+      mayRepairProfileImage &&
+      typeof profile_url === "string" &&
+      profile_url.startsWith("data:image/")
+    ) {
+      updateData.profile_url = profile_url;
+    }
+
+    const { data, error } = await supabase
+      .from("users")
+      .update(updateData)
+      .eq("id", id)
+      .select(USER_PUBLIC_SELECT)
+      .single();
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    clearUserEmbeddingCache();
+
+    res.json({
+      success: true,
+      user: data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.put("/api/users/:id/avatar", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const avatarConfig = normalizeAvatarConfig(req.body.avatar_config);
+
+    const { data: owner, error: ownerError } = await supabase
+      .from("users")
+      .select("owned_outfits")
+      .eq("id", id)
+      .single();
+
+    if (ownerError) {
+      return res.status(500).json({ success: false, error: ownerError.message });
+    }
+
+    const ownedOutfits = new Set(owner?.owned_outfits || []);
+    const lockedOutfits = Object.keys(AVATAR_ITEMS)
+      .map((category) => getStoreOutfitId(avatarConfig[category], category))
+      .filter((outfitId) => outfitId && !ownedOutfits.has(outfitId));
+
+    if (lockedOutfits.length > 0) {
+      return res.status(403).json({
+        success: false,
+        error: `尚未擁有商城造型：${[...new Set(lockedOutfits)].join(", ")}`,
+      });
+    }
+
+    const updateData = {
+      avatar_config: avatarConfig,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("users")
+      .update(updateData)
+      .eq("id", id)
+      .select(USER_PUBLIC_SELECT)
+      .single();
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      user: data,
+      avatar_config: data.avatar_config,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.put("/api/users/:id/face", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      face_embedding,
+      profile_url,
+    } = req.body;
+
+    const cleanEmbedding =
+      normalizeFaceDescriptor(face_embedding);
+
+    if (!cleanEmbedding) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "face_embedding 必須是包含 128 個有效數字的陣列",
+      });
+    }
+
+    const {
+      data: existingUser,
+      error: existingUserError,
+    } = await supabase
+      .from("users")
+      .select("profile_url")
+      .eq("id", id)
+      .single();
+
+    if (existingUserError) {
+      return res.status(500).json({
+        success: false,
+        error: existingUserError.message,
+      });
+    }
+
+    const updateData = {
+      face_embedding: cleanEmbedding,
+      updated_at: new Date().toISOString(),
+    };
+
+    const existingProfileUrl =
+      existingUser?.profile_url || "";
+
+    const mayRepairProfileImage =
+      !existingProfileUrl ||
+      existingProfileUrl.startsWith("blob:");
+
+    if (
+      mayRepairProfileImage &&
+      typeof profile_url === "string" &&
+      profile_url.startsWith("data:image/")
+    ) {
+      updateData.profile_url = profile_url;
+    }
+
+    const { data, error } = await supabase
+      .from("users")
+      .update(updateData)
+      .eq("id", id)
+      .select(USER_PUBLIC_SELECT)
+      .single();
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    clearUserEmbeddingCache();
+
+    return res.json({
+      success: true,
+      user: data,
+    });
+  } catch (err) {
+    console.error("users/:id/face error:", err);
+
+    return res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.get("/api/rewards/:token", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("coin_rewards")
+      .select("coins, expires_at")
+      .eq("token", req.params.token)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) {
+      return res.status(404).json({ success: false, error: "找不到這份獎勵" });
+    }
+
+    const expired = new Date(data.expires_at) < new Date();
+    res.json({ success: true, coins: data.coins, expires_at: data.expires_at, expired });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/rewards/:token/claim", async (req, res) => {
+  try {
+    const userId = Number(req.body?.user_id);
+    if (!Number.isInteger(userId)) {
+      return res.status(400).json({ success: false, error: "使用者資料無效" });
+    }
+
+    const { data, error } = await supabase.rpc("claim_coin_reward", {
+      p_token: req.params.token,
+      p_user_id: userId,
+    });
+    if (error) throw error;
+
+    const result = data?.[0];
+    const messages = {
+      not_found: "找不到這份獎勵",
+      expired: "這份獎勵已經過期",
+      user_not_found: "找不到可領獎的使用者",
+      already_claimed: "這個帳號已經領取過此獎勵",
+    };
+
+    if (result?.claim_status !== "claimed") {
+      return res.status(result?.claim_status === "already_claimed" ? 409 : 400).json({
+        success: false,
+        status: result?.claim_status,
+        error: messages[result?.claim_status] || "無法領取獎勵",
+        coins: result?.new_balance,
+      });
+    }
+
+    res.json({
+      success: true,
+      coins_awarded: result.coins_awarded,
+      coins: result.new_balance,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/store/outfits/:outfitId/purchase", async (req, res) => {
+  try {
+    const userId = Number(req.body?.user_id);
+    const outfitId = req.params.outfitId;
+    if (!Number.isInteger(userId) || !STORE_OUTFIT_IDS.has(outfitId)) {
+      return res.status(400).json({ success: false, error: "購買資料無效" });
+    }
+
+    let { data, error } = await supabase.rpc("purchase_store_outfit", {
+      p_user_id: userId,
+      p_outfit_id: outfitId,
+      p_price: 100,
+    });
+    if (error && (error.code === "PGRST202" || /purchase_store_outfit/i.test(error.message || ""))) {
+      const { data: user, error: userError } = await supabase
+        .from("users")
+        .select("coins, owned_outfits")
+        .eq("id", userId)
+        .maybeSingle();
+      if (userError) throw userError;
+      if (!user) {
+        data = [{ purchase_status: "user_not_found", new_balance: null, owned_outfits: [] }];
+      } else {
+        const owned = Array.isArray(user.owned_outfits) ? user.owned_outfits : [];
+        const balance = Math.max(Number(user.coins) || 0, 0);
+        if (owned.includes(outfitId)) {
+          data = [{ purchase_status: "already_owned", new_balance: balance, owned_outfits: owned }];
+        } else if (balance < 100) {
+          data = [{ purchase_status: "insufficient_coins", new_balance: balance, owned_outfits: owned }];
+        } else {
+          const nextOwned = [...owned, outfitId];
+          const nextBalance = balance - 100;
+          const { error: updateError } = await supabase.from("users").update({ coins: nextBalance, owned_outfits: nextOwned }).eq("id", userId);
+          if (updateError) throw updateError;
+          data = [{ purchase_status: "purchased", new_balance: nextBalance, owned_outfits: nextOwned }];
+        }
+      }
+      error = null;
+    }
+    if (error) throw error;
+
+    const result = data?.[0];
+    const messages = {
+      invalid_outfit: "找不到這套造型",
+      user_not_found: "找不到可購買的使用者",
+      already_owned: "你已經擁有這套造型",
+      insufficient_coins: "金幣不足",
+    };
+    if (result?.purchase_status !== "purchased") {
+      return res.status(result?.purchase_status === "already_owned" ? 409 : 400).json({
+        success: false,
+        status: result?.purchase_status,
+        error: messages[result?.purchase_status] || "購買失敗",
+        coins: result?.new_balance,
+        owned_outfits: result?.owned_outfits || [],
+      });
+    }
+
+    res.json({
+      success: true,
+      coins: result.new_balance,
+      owned_outfits: result.owned_outfits || [],
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+function rowsToAvatarSettings(rows = []) {
+  return rows.reduce((acc, row) => {
+    acc[`${row.item_id}_${row.layer}`] = {
+      scale: Number(row.scale) || 1,
+      x: Number(row.x) || 0,
+      y: Number(row.y) || 0,
+      thumb_scale: Number(row.thumb_scale) || 1,
+      thumb_x: Number(row.thumb_x) || 0,
+      thumb_y: Number(row.thumb_y) || 0,
+    };
+
+    return acc;
+  }, {});
+}
+
+app.get("/api/avatar/item-settings", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("avatar_item_settings")
+      .select("*")
+      .order("category", { ascending: true })
+      .order("item_id", { ascending: true });
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      settings: rowsToAvatarSettings(data || []),
+      rows: data || [],
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.put("/api/avatar/item-settings/:itemId/:layer", async (req, res) => {
+  try {
+    if (!requireAvatarAdmin(req, res)) return;
+
+    const { itemId, layer } = req.params;
+    const category = itemId.split("-")[0];
+
+    if (!AVATAR_ITEMS[category]?.includes(itemId)) {
+      return res.status(400).json({
+        success: false,
+        error: "無效的 avatar item_id",
+      });
+    }
+
+    if (!["front", "back"].includes(layer)) {
+      return res.status(400).json({
+        success: false,
+        error: "layer 必須是 front 或 back",
+      });
+    }
+
+    const row = {
+      category,
+      item_id: itemId,
+      layer,
+      scale: Number(req.body.scale) || 1,
+      x: Number(req.body.x) || 0,
+      y: Number(req.body.y) || 0,
+      thumb_scale: Number(req.body.thumb_scale) || 1,
+      thumb_x: Number(req.body.thumb_x) || 0,
+      thumb_y: Number(req.body.thumb_y) || 0,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from("avatar_item_settings")
+      .upsert(row, {
+        onConflict: "item_id,layer",
+      });
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    const { data: rows, error: loadError } = await supabase
+      .from("avatar_item_settings")
+      .select("*")
+      .order("category", { ascending: true })
+      .order("item_id", { ascending: true });
+
+    if (loadError) {
+      return res.status(500).json({
+        success: false,
+        error: loadError.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      setting: row,
+      settings: rowsToAvatarSettings(rows || []),
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.post("/api/avatar/backfill-users", async (req, res) => {
+  try {
+    if (!requireAvatarAdmin(req, res)) return;
+
+    const { data: users, error } = await supabase
+      .from("users")
+      .select("id, avatar_config")
+      .eq("is_active", true);
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    let updatedCount = 0;
+
+    for (const user of users || []) {
+      const existingConfig = user.avatar_config;
+      const hasCompleteConfig =
+        existingConfig &&
+        Object.keys(AVATAR_ITEMS).every((category) =>
+          AVATAR_ITEMS[category].includes(existingConfig[category])
+        );
+
+      if (hasCompleteConfig) continue;
+
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({
+          avatar_config: createRandomAvatarConfig(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id);
+
+      if (updateError) {
+        return res.status(500).json({
+          success: false,
+          error: updateError.message,
+        });
+      }
+
+      updatedCount++;
+    }
+
+    res.json({
+      success: true,
+      updated_count: updatedCount,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.post("/api/face-recognize-batch", async (req, res) => {
+    try {
+      const { descriptors } = req.body;
+
+      if (
+        !Array.isArray(descriptors) ||
+        descriptors.length > MAX_BATCH_FACE_COUNT
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            `descriptors 必須是陣列，且一次最多 ` +
+            `${MAX_BATCH_FACE_COUNT} 張臉`,
+        });
+      }
+
+      const users =
+        await getActiveUsersWithEmbeddings();
+
+      const matches = descriptors.map(
+        (descriptor) => {
+          const cleanDescriptor =
+            normalizeFaceDescriptor(descriptor);
+
+          if (!cleanDescriptor) {
+            return null;
+          }
+
+          const match = findBestFaceMatch(
+            cleanDescriptor,
+            users
+          );
+
+          const isAmbiguous =
+            faceMatchIsAmbiguous(
+              match.distance,
+              match.secondDistance
+            );
+
+          if (
+            !match.user ||
+            match.distance >=
+              FACE_RECOGNITION_THRESHOLD ||
+            isAmbiguous
+          ) {
+            return null;
+          }
+
+          return {
+            userId: match.user.id,
+            distance: match.distance,
+          };
+        }
+      );
+
+      const matchedUserIds = [
+        ...new Set(
+          matches
+            .filter(Boolean)
+            .map((match) => match.userId)
+        ),
+      ];
+
+      let publicUserMap = new Map();
+
+      if (matchedUserIds.length > 0) {
+        const {
+          data: matchedUsers,
+          error: matchedUsersError,
+        } = await supabase
+          .from("users")
+          .select(USER_PUBLIC_SELECT)
+          .in("id", matchedUserIds)
+          .eq("is_active", true);
+
+        if (matchedUsersError) {
+          throw new Error(
+            matchedUsersError.message
+          );
+        }
+
+        publicUserMap = new Map(
+          (matchedUsers || []).map((user) => [
+            String(user.id),
+            user,
+          ])
+        );
+      }
+
+      const results = matches.map((match) => {
+        if (!match) return null;
+
+        const user = publicUserMap.get(
+          String(match.userId)
+        );
+
+        if (!user) return null;
+
+        return {
+          user,
+          distance: match.distance,
+        };
+      });
+
+      return res.json({
+        success: true,
+        results,
+      });
+    } catch (err) {
+      console.error(
+        "face-recognize-batch error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "批次臉部辨識服務發生錯誤",
+      });
+    }
+  }
+);
 
 /* =========================
    Quiz API
@@ -561,13 +1734,221 @@ app.delete("/api/quizzes/:quizId", async (req, res) => {
   }
 });
 
+app.post("/api/ai/generate-quiz", async (req, res) => {
+  try {
+    const { text, question_count = 5, difficulty = "normal" } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "請提供教材文字",
+      });
+    }
+
+    const difficultyText =
+      difficulty === "easy"
+        ? "簡單：題目應偏向基本理解、定義、直接從教材找得到答案"
+        : difficulty === "hard"
+        ? "困難：題目應偏向推論、比較、應用與觀念整合"
+        : "普通：題目應包含基本理解與少量應用題";
+
+    const prompt = `
+你是一位測驗題目設計老師。
+請根據以下教材內容，產生 ${question_count} 題四選一選擇題。
+
+難度：${difficultyText}
+
+規則：
+1. 只能根據教材內容出題
+2. 每題一定要有 A/B/C/D 四個選項
+3. correct_answer 只能是 A、B、C、D
+4. time_limit 固定給 20
+5. 請只回傳 JSON，不要 markdown，不要解釋
+
+回傳格式：
+[
+  {
+    "question_text": "題目",
+    "option_a": "選項A",
+    "option_b": "選項B",
+    "option_c": "選項C",
+    "option_d": "選項D",
+    "correct_answer": "A",
+    "time_limit": 20
+  }
+]
+
+教材內容：
+${text}
+`;
+
+    const response = await gemini.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    const rawText = response.text;
+
+    let questions;
+
+    try {
+      questions = JSON.parse(rawText);
+    } catch (err) {
+      console.error("Gemini 回傳內容不是合法 JSON：", rawText);
+      return res.status(500).json({
+        success: false,
+        error: "AI 回傳格式錯誤，請重試",
+      });
+    }
+
+    if (!Array.isArray(questions)) {
+      return res.status(500).json({
+        success: false,
+        error: "AI 回傳不是題目陣列",
+      });
+    }
+
+    const cleanQuestions = validateQuestions(
+      questions,
+      question_count
+    );
+
+    res.json({
+      success: true,
+      questions: cleanQuestions,
+    });
+  } catch (err) {
+    console.error("Gemini generate quiz error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.post("/api/ai/generate-quiz-pdf",
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { question_count = 5, difficulty = "normal" } = req.body;
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: "請上傳 PDF 檔案",
+        });
+      }
+
+      if (req.file.mimetype !== "application/pdf") {
+        return res.status(400).json({
+          success: false,
+          error: "只支援 PDF 檔案",
+        });
+      }
+
+      const pdfBase64 = req.file.buffer.toString("base64");
+
+      const prompt = `
+你是一位測驗題目設計老師。
+請根據上傳的 PDF 內容，產生 ${question_count} 題四選一選擇題。
+
+難度：${difficulty}
+
+規則：
+1. 只能根據 PDF 內容出題
+2. 每題一定要有 A/B/C/D 四個選項
+3. correct_answer 只能是 A、B、C、D
+4. time_limit 固定給 20
+5. 請只回傳 JSON，不要 markdown，不要解釋
+
+回傳格式：
+[
+  {
+    "question_text": "題目",
+    "option_a": "選項A",
+    "option_b": "選項B",
+    "option_c": "選項C",
+    "option_d": "選項D",
+    "correct_answer": "A",
+    "time_limit": 20
+  }
+]
+`;
+
+      const response = await gemini.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType: "application/pdf",
+                  data: pdfBase64,
+                },
+              },
+              {
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        config: {
+          responseMimeType: "application/json",
+        },
+      });
+
+      let questions;
+
+      try {
+        questions = JSON.parse(response.text);
+      } catch (err) {
+        console.error("Gemini 回傳不是 JSON：", response.text);
+        return res.status(500).json({
+          success: false,
+          error: "AI 回傳格式錯誤",
+        });
+      }
+
+      const cleanQuestions = questions.map((q) => ({
+        question_text: q.question_text || "",
+        option_a: q.option_a || "",
+        option_b: q.option_b || "",
+        option_c: q.option_c || "",
+        option_d: q.option_d || "",
+        correct_answer: ["A", "B", "C", "D"].includes(q.correct_answer)
+          ? q.correct_answer
+          : "A",
+        time_limit: Number(q.time_limit) || 20,
+      }));
+
+      res.json({
+        success: true,
+        questions: cleanQuestions,
+      });
+    } catch (err) {
+      console.error("PDF AI 出題失敗：", err);
+      res.status(500).json({
+        success: false,
+        error: err.message,
+      });
+    }
+  }
+);
+
 /* =========================
    Game Session API
 ========================= */
 
 app.post("/api/game-sessions/create", async (req, res) => {
   try {
-    const { quiz_id } = req.body;
+    const {
+      quiz_id,
+      game_mode = "choice",
+    } = req.body;
 
     if (!quiz_id) {
       return res.status(400).json({
@@ -575,6 +1956,11 @@ app.post("/api/game-sessions/create", async (req, res) => {
         error: "quiz_id 為必填",
       });
     }
+
+    const safeGameMode =
+      ["normal", "ar", "choice"].includes(game_mode)
+        ? game_mode
+        : "choice";
 
     const roomCode = await createUniqueRoomCode();
 
@@ -584,6 +1970,7 @@ app.post("/api/game-sessions/create", async (req, res) => {
         {
           quiz_id,
           room_code: roomCode,
+          game_mode: safeGameMode,
           started_at: null,
           ended_at: null,
           current_question: 0,
@@ -729,6 +2116,70 @@ app.put("/api/game-sessions/:sessionId/finish", async (req, res) => {
   }
 });
 
+app.put("/api/game-sessions/:sessionId/dissolve", async (req, res) => {
+  try {
+    const sessionId = Number(req.params.sessionId);
+    const hostId = Number(req.body.host_id);
+
+    if (!sessionId || !hostId) {
+      return res.status(400).json({
+        success: false,
+        error: "sessionId 和 host_id 為必填",
+      });
+    }
+
+    const { data: session, error: sessionError } = await supabase
+      .from("game_sessions")
+      .select("session_id, quiz_id, started_at")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+
+    if (sessionError) throw new Error(sessionError.message);
+    if (!session) {
+      return res.status(404).json({ success: false, error: "找不到房間" });
+    }
+    if (session.started_at) {
+      return res.status(409).json({
+        success: false,
+        error: "遊戲開始後無法從 Lobby 解散房間",
+      });
+    }
+
+    const { data: quiz, error: quizError } = await supabase
+      .from("quizzes")
+      .select("host_id")
+      .eq("quiz_id", session.quiz_id)
+      .single();
+
+    if (quizError) throw new Error(quizError.message);
+    if (Number(quiz.host_id) !== hostId) {
+      return res.status(403).json({
+        success: false,
+        error: "只有房主可以解散房間",
+      });
+    }
+
+    const { error: recordError } = await supabase
+      .from("player_records")
+      .delete()
+      .eq("session_id", sessionId);
+
+    if (recordError) throw new Error(recordError.message);
+
+    const { error: deleteError } = await supabase
+      .from("game_sessions")
+      .delete()
+      .eq("session_id", sessionId);
+
+    if (deleteError) throw new Error(deleteError.message);
+
+    io.to(`session:${sessionId}`).emit("room-dissolved", { sessionId });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 /* =========================
    Player API
 ========================= */
@@ -805,8 +2256,7 @@ app.get("/api/player-records/session/:sessionId", async (req, res) => {
         users (
           id,
           name,
-          nickname,
-          avatar_url
+          profile_url
         )
       `)
       .eq("session_id", sessionId)
@@ -960,8 +2410,7 @@ app.get("/api/player-answers/session/:sessionId/question/:questionId", async (re
         users (
           id,
           name,
-          nickname,
-          avatar_url
+          profile_url
         )
       `)
       .eq("session_id", sessionId)
@@ -1024,6 +2473,379 @@ app.get("/api/leaderboard/:sessionId", async (req, res) => {
   }
 });
 
+app.get("/api/history/player/:userId", async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+
+    const { data: records, error } = await supabase
+      .from("player_records")
+      .select(`
+        record_id,
+        session_id,
+        user_id,
+        score,
+        joined_at,
+        game_sessions (
+          session_id,
+          quiz_id,
+          room_code,
+          started_at,
+          ended_at,
+          game_finished,
+          quizzes (
+            quiz_id,
+            title,
+            host_id
+          )
+        )
+      `)
+      .eq("user_id", userId)
+      .order("joined_at", { ascending: false });
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    const sessions = [];
+
+    for (const record of records || []) {
+      const session = record.game_sessions;
+
+      if (!session) continue;
+
+      const { data: leaderboard } = await supabase
+        .from("player_records")
+        .select("user_id, score")
+        .eq("session_id", session.session_id)
+        .order("score", { ascending: false });
+
+      const rank =
+        (leaderboard || []).findIndex(
+          (item) => Number(item.user_id) === userId
+        ) + 1;
+
+      sessions.push({
+        record_id: record.record_id,
+        session_id: session.session_id,
+        room_code: session.room_code,
+        quiz_id: session.quiz_id,
+        quiz_title: session.quizzes?.title || "未命名測驗",
+        host_id: session.quizzes?.host_id,
+        score: record.score,
+        joined_at: record.joined_at,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        game_finished: session.game_finished,
+        rank: rank || null,
+        player_count: leaderboard?.length || 0,
+      });
+    }
+
+    res.json({
+      success: true,
+      sessions,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.get("/api/history/player/:userId/session/:sessionId", async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    const sessionId = Number(req.params.sessionId);
+
+    const { data: record, error: recordError } = await supabase
+      .from("player_records")
+      .select(`
+        record_id,
+        session_id,
+        user_id,
+        score,
+        joined_at,
+        game_sessions (
+          session_id,
+          quiz_id,
+          room_code,
+          started_at,
+          ended_at,
+          game_finished,
+          quizzes (
+            quiz_id,
+            title,
+            host_id
+          )
+        )
+      `)
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+      .single();
+
+    if (recordError || !record) {
+      return res.status(404).json({
+        success: false,
+        error: "找不到此玩家的遊戲紀錄",
+      });
+    }
+
+    const { data: leaderboard } = await supabase
+      .from("player_records")
+      .select(`
+        user_id,
+        score,
+        users (
+          id,
+          name,
+          profile_url
+        )
+      `)
+      .eq("session_id", sessionId)
+      .order("score", { ascending: false });
+
+    const rank =
+      (leaderboard || []).findIndex(
+        (item) => Number(item.user_id) === userId
+      ) + 1;
+
+    const { data: answers, error: answersError } = await supabase
+      .from("player_answers")
+      .select(`
+        answer_id,
+        session_id,
+        question_id,
+        user_id,
+        answer,
+        is_correct,
+        score,
+        answered_at,
+        questions (
+          question_id,
+          question_text,
+          correct_answer,
+          options
+        )
+      `)
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+      .order("question_id", { ascending: true });
+
+    if (answersError) {
+      return res.status(500).json({
+        success: false,
+        error: answersError.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      session: record.game_sessions,
+      quiz: record.game_sessions?.quizzes,
+      record: {
+        record_id: record.record_id,
+        score: record.score,
+        joined_at: record.joined_at,
+        rank: rank || null,
+        player_count: leaderboard?.length || 0,
+      },
+      answers: answers || [],
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.get("/api/history/host/:hostId", async (req, res) => {
+  try {
+    const hostId = Number(req.params.hostId);
+
+    const { data: sessions, error } = await supabase
+      .from("game_sessions")
+      .select(`
+        session_id,
+        quiz_id,
+        room_code,
+        started_at,
+        ended_at,
+        game_finished,
+        quizzes (
+          quiz_id,
+          title,
+          host_id
+        )
+      `)
+      .eq("quizzes.host_id", hostId)
+      .order("started_at", { ascending: false });
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    const result = [];
+
+    for (const session of sessions || []) {
+      if (!session.quizzes) continue;
+
+      const { count, error: countError } = await supabase
+        .from("player_records")
+        .select("record_id", {
+          count: "exact",
+          head: true,
+        })
+        .eq("session_id", session.session_id);
+
+      if (countError) {
+        return res.status(500).json({
+          success: false,
+          error: countError.message,
+        });
+      }
+
+      result.push({
+        session_id: session.session_id,
+        quiz_id: session.quiz_id,
+        quiz_title: session.quizzes.title || "未命名測驗",
+        room_code: session.room_code,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        game_finished: session.game_finished,
+        player_count: count || 0,
+      });
+    }
+
+    res.json({
+      success: true,
+      sessions: result,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.get("/api/history/host/:hostId/session/:sessionId", async (req, res) => {
+  try {
+    const hostId = Number(req.params.hostId);
+    const sessionId = Number(req.params.sessionId);
+
+    const { data: session, error: sessionError } = await supabase
+      .from("game_sessions")
+      .select(`
+        session_id,
+        quiz_id,
+        room_code,
+        started_at,
+        ended_at,
+        current_question,
+        game_finished,
+        quizzes (
+          quiz_id,
+          title,
+          host_id
+        )
+      `)
+      .eq("session_id", sessionId)
+      .single();
+
+    if (sessionError || !session) {
+      return res.status(404).json({
+        success: false,
+        error: "找不到遊戲場次",
+      });
+    }
+
+    if (Number(session.quizzes?.host_id) !== hostId) {
+      return res.status(403).json({
+        success: false,
+        error: "你不能查看別人的主持紀錄",
+      });
+    }
+
+    const { data: leaderboard, error: leaderboardError } = await supabase
+      .from("player_records")
+      .select(`
+        record_id,
+        session_id,
+        user_id,
+        score,
+        joined_at,
+        users (
+          id,
+          name,
+          profile_url
+        )
+      `)
+      .eq("session_id", sessionId)
+      .order("score", { ascending: false });
+
+    if (leaderboardError) {
+      return res.status(500).json({
+        success: false,
+        error: leaderboardError.message,
+      });
+    }
+
+    const { data: answers, error: answersError } = await supabase
+      .from("player_answers")
+      .select(`
+        answer_id,
+        session_id,
+        question_id,
+        user_id,
+        answer,
+        is_correct,
+        score,
+        answered_at,
+        users (
+          id,
+          name,
+          profile_url
+        ),
+        questions (
+          question_id,
+          question_text,
+          correct_answer,
+          options
+        )
+      `)
+      .eq("session_id", sessionId)
+      .order("question_id", { ascending: true });
+
+    if (answersError) {
+      return res.status(500).json({
+        success: false,
+        error: answersError.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      session,
+      quiz: session.quizzes,
+      leaderboard: leaderboard || [],
+      answers: answers || [],
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
 /* =========================
    Socket.io Events + WebRTC Signaling
 ========================= */
@@ -1041,6 +2863,7 @@ io.on("connection", (socket) => {
       socket.data.sessionId = Number(sessionId);
       socket.data.userId = userId ? Number(userId) : null;
       socket.data.role = role || "player";
+      trackLobbyPlayerSocket(socket);
 
       const fullData = await getSessionFullData(Number(sessionId));
       const leaderboard = await getLeaderboard(Number(sessionId));
@@ -1057,6 +2880,29 @@ io.on("connection", (socket) => {
       });
     } catch (err) {
       socket.emit("socket-error", { error: err.message });
+    }
+  });
+
+  socket.on("leave-session", async (_, acknowledge) => {
+    const sessionId = socket.data.sessionId;
+    const userId = socket.data.userId;
+    const role = socket.data.role;
+
+    try {
+      const key = untrackLobbyPlayerSocket(socket);
+
+      if (key && role === "player") {
+        await removeLobbyPlayer(sessionId, userId);
+      }
+
+      socket.data.leftSession = true;
+      if (typeof acknowledge === "function") acknowledge({ success: true });
+    } catch (err) {
+      socket.data.leftSession = false;
+      console.error("Failed to leave lobby:", err);
+      if (typeof acknowledge === "function") {
+        acknowledge({ success: false, error: err.message });
+      }
     }
   });
 
@@ -1207,7 +3053,29 @@ io.on("connection", (socket) => {
       });
     }
 
+    if (!socket.data.leftSession) {
+      scheduleLobbyPlayerCleanup(socket);
+    }
+
     console.log("Socket disconnected:", socket.id);
+  });
+});
+
+app.get("/api/ice-config", (req, res) => {
+  res.json({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      {
+        urls: process.env.TURN_URL,
+        username: process.env.TURN_USERNAME,
+        credential: process.env.TURN_CREDENTIAL,
+      },
+      {
+        urls: process.env.TURNS_URL,
+        username: process.env.TURN_USERNAME,
+        credential: process.env.TURN_CREDENTIAL,
+      },
+    ],
   });
 });
 

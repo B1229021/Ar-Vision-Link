@@ -64,7 +64,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 
 # 功能特色
 
-### 即時多人測驗
+### 🎮 即時多人測驗
 
 - 使用六碼房號建立與加入房間
 - Lobby 即時顯示已加入玩家
@@ -73,7 +73,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 - 玩家離線與短時間重新連線處理
 - 支援一般模式、AR 模式及加入時選擇模式
 
-### Quiz Center
+### 🎛 Quiz Center
 
 - 建立、瀏覽、編輯與刪除題庫
 - 每題支援四個選項、正確答案與作答時間
@@ -81,7 +81,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 - 查看玩家或主持人的歷史場次
 - 顯示單場題目、答案與得分明細
 
-### AI 題目生成
+### 🤖 AI 題目生成
 
 - 輸入文字內容產生四選一題目
 - 上傳 PDF 並將內容整理為題庫
@@ -89,7 +89,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 - 自動檢查題目、選項與答案格式
 - 產生後仍可人工修改再建立題庫
 
-### WebRTC 玩家影像
+### 📹 WebRTC 玩家影像
 
 - 玩家攝影機串流至主持人控制台
 - Socket.IO 負責 WebRTC signaling
@@ -97,7 +97,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 - 主持人可同時查看多位玩家影像
 - 玩家斷線時自動清除對應的 Peer Connection
 
-### 人臉辨識
+### 👤 人臉辨識
 
 - 註冊時擷取臉部特徵向量
 - 透過歐氏距離進行登入比對
@@ -105,7 +105,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 - 可在相機畫面辨識多位已註冊使用者
 - TensorFlow.js 支援 WebGL、WASM 與 CPU 後端降級
 
-### AR Quiz
+### 🥽 AR Quiz
 
 - 使用 MediaPipe 追蹤手部關鍵點
 - 透過手勢選擇答案
@@ -113,7 +113,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 - 即時顯示個人分數與排行榜
 - 與一般遊戲模式共用相同房間狀態
 
-### AR 自拍
+### 📸 AR 自拍
 
 - 即時追蹤臉部 landmarks 與表情資訊
 - 支援眼鏡、動物造型等效果
@@ -121,13 +121,13 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 - 使用 Three.js 載入及呈現 3D 配件
 - 可依臉部位置、角度及比例調整特效
 
-### 虛擬替身與換裝
+### 👕 虛擬替身與換裝
 
 - 所有user均擁有自己的虛擬替身
 - 虛擬替身包含髮型、表情、上衣及下身分層組合
 - 可透過不同造型打造自己的虛擬替身
 
-### 管理後台
+### 🛠️ 管理後台
 
 - 查看使用者數量及系統資源概況
 - 管理使用者狀態與管理員權限
@@ -138,6 +138,8 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 ---
 
 # 實機畫面
+
+<p align="right"><sub>（包含電腦與手機畫面）</sub></p>
 
 ### Quiz Center
 
@@ -394,10 +396,6 @@ ar-vision-link/
 │  ├─ utils/                     # AR、角色設定與圖片合成工具
 │  ├─ App.jsx                    # 應用路由
 │  └─ main.jsx                   # React 進入點
-├─ test/                         # 早期版本的獨立應用副本
-├─ avatar-group-composer.html    # 角色圖層合成校正工具
-├─ avatar-relative-calibrator.html
-├─ store-outfit-calibrator.html  # 商城套裝校正工具
 ├─ index.html
 ├─ vite.config.js
 └─ package.json
@@ -441,9 +439,9 @@ ar-vision-link/
 
 # 報告影片 & 專題demo
 
-- [第2次上台簡報_錄影](./videos/第2次上台簡報_錄影.mp4)
-
 影片檔案統一存放於 [`videos/`](./videos/) 資料夾。
+
+- [第2次上台簡報_錄影](./videos/第2次上台簡報_錄影.mp4)
 
 ---
 
@@ -460,6 +458,6 @@ ar-vision-link/
 
 # 專案倉庫說明
 
-本 GitHub 倉庫（[B1229021/Ar-Vision-Link](https://github.com/B1229021/Ar-Vision-Link)）僅供專題成果展示使用；本專案實際的開發與版本維護皆於 [B1229049/ar-vision-link](https://github.com/B1229049/ar-vision-link) 進行。
+<p style="color: red;">本 GitHub 倉庫（<a href="https://github.com/B1229021/Ar-Vision-Link">B1229021/Ar-Vision-Link</a>）僅供專題成果展示使用；本專案實際的開發與版本維護皆於 <a href="https://github.com/B1229049/ar-vision-link">B1229049/ar-vision-link</a> 進行。</p>
 
 ---

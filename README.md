@@ -2,7 +2,7 @@
 
 <div >
 
-**結合即時多人測驗、AR 互動、WebRTC 視訊與人臉辨識的線上學習平台**
+**主打即時多人測驗、AR 互動、人臉辨識與收集式要素的線上學習網站**
 
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
@@ -23,7 +23,7 @@
 
 <hr />
 
-**專案網址：** [https://b1229049.github.io/ar-vision-link/](https://b1229049.github.io/ar-vision-link/)
+**網站網址：** [https://b1229049.github.io/ar-vision-link/](https://b1229049.github.io/ar-vision-link/)
 
 ---
 
@@ -67,34 +67,32 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 ### 🎮 即時多人測驗
 
 - 使用六碼房號建立與加入房間
-- Lobby 即時顯示已加入玩家
-- 主持人控制開始、換題、結束及解散房間
+- 遊戲大廳會即時顯示已加入玩家
+- 主持人可控制開始、換題、結束及解散房間
 - 題目、倒數、作答結果與排行榜即時同步
 - 玩家離線與短時間重新連線處理
-- 支援一般模式、AR 模式及加入時選擇模式
+- 答題支援一般模式、AR 模式
 
 ### 🎛 Quiz Center
 
-- 建立、瀏覽、編輯與刪除題庫
-- 每題支援四個選項、正確答案與作答時間
-- 顯示已建立測驗及主持紀錄
-- 查看玩家或主持人的歷史場次
-- 顯示單場題目、答案與得分明細
+- 在此建立所有有關答題的工作
+- 對題目進行建立、瀏覽、編輯與刪除
+- 可瀏覽已建立的題目及主持紀錄
+- 可瀏覽自身當玩家或主持人的歷史紀錄
 
 ### 🤖 AI 題目生成
 
-- 輸入文字內容產生四選一題目
-- 上傳 PDF 並將內容整理為題庫
+- 除了手打題目，也可上傳 PDF 透過 AI 將內容整理為題目
 - 可設定產生題數與難度
 - 自動檢查題目、選項與答案格式
 - 產生後仍可人工修改再建立題庫
 
 ### 📹 WebRTC 玩家影像
 
-- 玩家攝影機串流至主持人控制台
+- 答題時，玩家鏡頭畫面可串流至主持人端
+- 主持人可同時查看多位玩家鏡頭所捕捉的影像
 - Socket.IO 負責 WebRTC signaling
 - 支援 STUN 與 TURN 連線設定
-- 主持人可同時查看多位玩家影像
 - 玩家斷線時自動清除對應的 Peer Connection
 
 ### 👤 人臉辨識
@@ -102,21 +100,19 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 - 註冊時擷取臉部特徵向量
 - 透過歐氏距離進行登入比對
 - 支援重新註冊臉部資料
-- 可在相機畫面辨識多位已註冊使用者
+- 可在相機畫面辨識多位已註冊使用者(此為ARcamera功能之一)
 - TensorFlow.js 支援 WebGL、WASM 與 CPU 後端降級
 
 ### 🥽 AR Quiz
 
 - 使用 MediaPipe 追蹤手部關鍵點
-- 透過手勢選擇答案
+- 透過手勢追蹤，捕捉玩家所選擇的答案
 - 在攝影機畫面疊加題目與作答介面
-- 即時顯示個人分數與排行榜
-- 與一般遊戲模式共用相同房間狀態
 
 ### 📸 AR 自拍
 
 - 即時追蹤臉部 landmarks 與表情資訊
-- 支援眼鏡、動物造型等效果
+- 自拍有多種簡易特效，如眼鏡、動物造型等效果(此為ARcamera功能之一)
 - 支援 2D Canvas 特效
 - 使用 Three.js 載入及呈現 3D 配件
 - 可依臉部位置、角度及比例調整特效
@@ -126,12 +122,12 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 - 所有user均擁有自己的虛擬替身
 - 虛擬替身包含髮型、表情、上衣及下身分層組合
 - 可透過不同造型打造自己的虛擬替身
+- 可透過開發人員發起的活動領取獎勵，換取虛擬替身造型
 
 ### 🛠️ 管理後台
 
 - 查看使用者數量及系統資源概況
 - 管理使用者狀態與管理員權限
-- 檢視測驗、場次、作答及視覺紀錄
 - 編輯或刪除允許管理的資料內容
 - 建立並追蹤限時金幣獎勵
 
@@ -154,7 +150,11 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 玩家作答與主持人控制台即時同步，完整呈現從 Lobby 到即時答題的遊戲流程。
 
 <div align="center">
-  <img src="ar-vision-link/public/generated/game-overview.png" alt="遊戲 Lobby、主持人控制台與玩家答題畫面" width="80%" />
+  <img src="ar-vision-link/public/generated/game-lobby-showcase.png" alt="遊戲房間 Lobby 畫面" width="80%" />
+  <br /><br />
+  <img src="ar-vision-link/public/generated/game-host-showcase.png" alt="主持人控制台畫面" width="80%" />
+  <br /><br />
+  <img src="ar-vision-link/public/generated/game-player-mobile-showcase.png" alt="手機玩家答題畫面" width="40%" />
 </div>
 
 ### AR Quiz
@@ -170,6 +170,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 可將多種 2D 與 3D 濾鏡整理成一張橫向展示圖。
 
 <div align="center">
+  <img src="ar-vision-link/public/generated/ar-camera-face-recognition.png" alt="AR Camera 人臉辨識畫面" width="28%" />
   <img src="ar-vision-link/public/generated/ar-camera-entry.png" alt="AR Camera 模式選擇畫面" width="28%" />
   <img src="ar-vision-link/public/generated/ar-camera-selfie.png" alt="AR Camera 自拍特效畫面" width="28%" />
 </div>
@@ -180,6 +181,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 
 <div align="center">
   <img src="ar-vision-link/public/generated/home-avatar-dressup.png" alt="虛擬替身換裝介面" width="80%" />
+  <img src="ar-vision-link/public/generated/avatar-store.png" alt="虛擬替身商城介面" width="80%" />
 </div>
 
 ---
@@ -458,6 +460,11 @@ ar-vision-link/
 
 # 專案倉庫說明
 
-<p style="color: red;">本 GitHub 倉庫（<a href="https://github.com/B1229021/Ar-Vision-Link">B1229021/Ar-Vision-Link</a>）僅供專題成果展示使用；本專案實際的開發與版本維護皆於 <a href="https://github.com/B1229049/ar-vision-link">B1229049/ar-vision-link</a> 進行。</p>
+```diff
+- 本 GitHub 倉庫（https://github.com/B1229021/Ar-Vision-Link）僅供專題成果展示使用；
+- 本專案實際的開發與版本維護皆於 https://github.com/B1229049/ar-vision-link 進行。
+```
+
+[展示成果倉庫](https://github.com/B1229021/Ar-Vision-Link) · [實際開發倉庫](https://github.com/B1229049/ar-vision-link)
 
 ---

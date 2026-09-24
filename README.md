@@ -66,12 +66,10 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 
 ### 🎮 即時多人測驗
 
-- 使用六碼房號建立與加入房間
-- 遊戲大廳會即時顯示已加入玩家
+- 答題支援一般模式、AR 模式
 - 主持人可控制開始、換題、結束及解散房間
 - 題目、倒數、作答結果與排行榜即時同步
 - 玩家離線與短時間重新連線處理
-- 答題支援一般模式、AR 模式
 
 ### 🎛 Quiz Center
 
@@ -105,24 +103,25 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 
 ### 🥽 AR Quiz
 
+- 主打的AR答題模式
 - 使用 MediaPipe 追蹤手部關鍵點
 - 透過手勢追蹤，捕捉玩家所選擇的答案
-- 在攝影機畫面疊加題目與作答介面
+- 在攝影機畫面疊加題目與作答介面，呈現 AR 效果
 
 ### 📸 AR 自拍
 
 - 即時追蹤臉部 landmarks 與表情資訊
 - 自拍有多種簡易特效，如眼鏡、動物造型等效果(此為ARcamera功能之一)
 - 支援 2D Canvas 特效
-- 使用 Three.js 載入及呈現 3D 配件
+- 使用 Three.js 載入及呈現 3D 配件(3D配件為網路上找的)
 - 可依臉部位置、角度及比例調整特效
 
 ### 👕 虛擬替身與換裝
 
 - 所有user均擁有自己的虛擬替身
-- 虛擬替身包含髮型、表情、上衣及下身分層組合
+- 虛擬替身包含髮型、表情、上半身及下半身分層組合
 - 可透過不同造型打造自己的虛擬替身
-- 可透過開發人員發起的活動領取獎勵，換取虛擬替身造型
+- 可透過開發人員發起的活動領取獎勵，換取虛擬替身造型(專題展來本攤位即可獲得兌換造型金幣)
 
 ### 🛠️ 管理後台
 
@@ -139,15 +138,15 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 
 ### Quiz Center
 
-題庫建立、題庫管理與歷史紀錄集中在同一個控制中心。
+題庫建立、題庫管理、歷史紀錄、創建答題房間均集中在此控制中心。
 
 <div align="center">
   <img src="ar-vision-link/public/generated/quiz-center.png" alt="Quiz Center 題庫控制中心" width="80%" />
 </div>
 
-### 遊戲畫面
+### 遊戲答題畫面
 
-玩家作答與主持人控制台即時同步，完整呈現從 Lobby 到即時答題的遊戲流程。
+玩家作答與主持人控制台即時同步，三張圖分別展示答題等待大廳、主持人中控台、玩家一般模式答題介面。
 
 <div align="center">
   <img src="ar-vision-link/public/generated/game-lobby-showcase.png" alt="遊戲房間 Lobby 畫面" width="80%" />
@@ -159,15 +158,15 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 
 ### AR Quiz
 
-展示手勢辨識、相機背景、答案區域與即時回饋。
+此為專案主打的AR答題模式，虛擬選項融合現實景象，展示手勢辨識、相機背景、答案區域與即時回饋。
 
 <div align="center">
   <img src="ar-vision-link/public/generated/ar-quiz-answer.png" alt="AR 手勢作答畫面" width="28%" />
 </div>
 
-### AR 自拍
+### AR Camera
 
-可將多種 2D 與 3D 濾鏡整理成一張橫向展示圖。
+左側"臉部辨識"可辨識出專案用戶並顯示名牌，右側"AR自拍"可搭配 2D 與 3D 特效完成自拍。
 
 <div align="center">
   <img src="ar-vision-link/public/generated/ar-camera-face-recognition.png" alt="AR Camera 人臉辨識畫面" width="28%" />
@@ -177,7 +176,7 @@ AR Vision Link 是一套以瀏覽器為核心的互動式測驗平台。系統�
 
 ### 虛擬替身換裝
 
-展示角色預覽、分類選擇與不同完成造型。
+虛擬替身有頭部、臉部、上半身、下半身的造型可替換，另外商城還有提供更炫炮、華麗的時裝可蒐集。
 
 <div align="center">
   <img src="ar-vision-link/public/generated/home-avatar-dressup.png" alt="虛擬替身換裝介面" width="80%" />
@@ -434,6 +433,7 @@ ar-vision-link/
 - 設計文件書(包含詳細流程圖、使用案例圖、活動圖)
 - 第1次上台簡報
 - 第2次上台簡報
+- 測試計劃書
 
 ---
 
@@ -444,6 +444,7 @@ ar-vision-link/
 影片檔案統一存放於 [`videos/`](./videos/) 資料夾。
 
 - [第2次上台簡報_錄影](./videos/第2次上台簡報_錄影.mp4)
+- [專題demo影片](./videos/專題demo影片.mp4)
 
 ---
 
@@ -460,11 +461,6 @@ ar-vision-link/
 
 # 專案倉庫說明
 
-```diff
-- 本 GitHub 倉庫（https://github.com/B1229021/Ar-Vision-Link）僅供專題成果展示使用；
-- 本專案實際的開發與版本維護皆於 https://github.com/B1229049/ar-vision-link 進行。
-```
-
-[展示成果倉庫](https://github.com/B1229021/Ar-Vision-Link) · [實際開發倉庫](https://github.com/B1229049/ar-vision-link)
+[![本 GitHub 倉庫僅供專題成果展示；本專案實際的開發與版本維護皆於 B1229049/ar-vision-link 進行。](ar-vision-link/public/repository-note.svg)](https://github.com/B1229049/ar-vision-link)
 
 ---
